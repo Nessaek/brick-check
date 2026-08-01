@@ -1,0 +1,14 @@
+{
+  "description": "Yellow pot buddy from LEGO Botanicals 10349 Happy Plants: yellow plates removed from the pot's upper front, exposing the brown soil bricks. Reference is the correct closed build from a different angle/distance.",
+  "defects": [
+    {
+      "x": 47,
+      "y": 55,
+      "label": "yellow plates removed from pot front (brown soil bricks exposed)",
+      "types": [
+        "MISSING PIECE"
+      ]
+    }
+  ],
+  "tolerance": 20
+}

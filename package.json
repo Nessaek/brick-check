@@ -1,0 +1,7 @@
+{
+  "name": "brickcheck",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": { "start": "node server.js", "eval": "node eval/run.js" },
+  "engines": { "node": ">=18" }
+}

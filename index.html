@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BrickCheck — Fix your LEGO build</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main>
+      <nav>
+        <a class="brand" href="#"><span class="brand-mark">B</span>BrickCheck</a>
+        <div class="nav-actions"><button class="text-button">How it works</button><button class="avatar">AD</button></div>
+      </nav>
+
+      <section class="hero">
+        <div class="eyebrow"><span></span> BUILD REVIEW</div>
+        <h1>Spot the wrong brick.<br /><em>Fix it with confidence.</em></h1>
+        <p>Upload a photo of your build and we’ll compare it with the instructions—then show exactly what to change.</p>
+      </section>
+
+      <section class="workspace" id="workspace">
+        <div class="input-panel">
+          <div class="panel-heading"><div><span class="step">01</span><h2>Your current build</h2></div><span class="required">REQUIRED</span></div>
+          <label class="upload-zone" id="drop-zone" for="build-upload">
+            <input id="build-upload" type="file" accept="image/*" />
+            <div class="upload-icon">↑</div>
+            <strong>Drop a photo here</strong>
+            <span>or <u>browse your files</u></span>
+            <small>JPG, PNG or HEIC · up to 10 MB</small>
+          </label>
+          <div class="preview hidden" id="preview-wrap"><img id="preview" alt="Your uploaded LEGO build" /><button id="remove-image" aria-label="Remove uploaded photo">×</button></div>
+          <p class="upload-status hidden" id="upload-status" role="status"></p>
+          <div class="photo-tip"><span>✦</span><p><b>For the sharpest results</b><br />Use bright, even light and photograph the build straight on.</p></div>
+        </div>
+
+        <div class="input-panel reference-panel">
+          <div class="panel-heading"><div><span class="step">02</span><h2>What should it look like?</h2></div><span class="optional">OPTIONAL</span></div>
+          <input id="reference-upload" type="file" accept="image/*" hidden />
+          <input id="instruction-upload" type="file" accept="image/*" hidden />
+          <div class="reference-card" id="reference-card">
+            <div class="reference-image" aria-label="Example reference LEGO build">
+              <i class="brick b1"></i><i class="brick b2"></i><i class="brick b3"></i><i class="brick b4"></i><i class="brick b5"></i><i class="brick b6"></i><i class="brick b7"></i><i class="brick b8"></i><i class="brick b9"></i><i class="brick b10"></i>
+            </div>
+            <div><b id="reference-title">No reference selected</b><span id="reference-status">Add a photo of the finished model or an instruction page</span><button class="change-ref" id="change-ref">Choose reference →</button><button class="change-ref" id="remove-ref" hidden>Remove reference ×</button></div>
+          </div>
+          <div class="or"><span>OR</span></div>
+          <button class="instruction-button" id="upload-instructions"><span>▧</span><span><b>Upload instruction page</b><small>We’ll identify the step for you</small></span><span>+</span></button>
+          <button class="analyze" id="analyze"><span class="sparkle">✦</span> Analyze my build <span class="arrow">→</span></button>
+          <p class="privacy">Your photos are used only to analyse this build.</p>
+        </div>
+      </section>
+
+      <section class="results hidden" id="results" aria-live="polite">
+        <div class="results-heading"><div><div class="eyebrow"><span></span> ANALYSIS COMPLETE</div><h2>Here’s what needs fixing</h2><p>Upload a photo and analyze your build to see results here.</p></div><button class="new-scan" id="new-scan">＋ New scan</button></div>
+        <div class="result-layout">
+          <div class="build-map">
+            <div class="map-top"><b>Your build</b><span><i></i> Issues marked after analysis</span></div>
+            <div class="map-image" id="map-image"></div>
+            <div class="map-footer"><span>Tap a marker to see the fix</span><span>⌕</span></div>
+          </div>
+          <div class="issues"></div>
+        </div>
+        <div class="success-card"><span class="success-icon">✓</span><span><b>All fixed?</b> Take another photo and we’ll make sure your build matches.</span><button id="check-again">Check again →</button></div>
+      </section>
+    </main>
+    <div class="loading hidden" id="loading"><div class="loader-brick"><i></i><i></i><i></i><i></i></div><h2>Comparing every brick…</h2><p>Looking for missing, misplaced and rotated pieces.</p></div>
+    <script src="app.js"></script>
+  </body>
+</html>

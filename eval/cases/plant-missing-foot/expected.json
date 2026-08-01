@@ -1,0 +1,14 @@
+{
+  "description": "Blue pot buddy (LEGO Botanicals 10349 Happy Plants), front view: one drum foot removed entirely (right side as viewed). Reference shows both feet flush and symmetric.",
+  "defects": [
+    {
+      "x": 75,
+      "y": 62,
+      "label": "right drum foot removed",
+      "types": [
+        "MISSING PIECE"
+      ]
+    }
+  ],
+  "tolerance": 25
+}

@@ -1,0 +1,9 @@
+node_modules/
+preprocess/.venv/
+.env
+local.env
+.DS_Store
+*.zip
+.idea/
+eval/images/
+__pycache__/

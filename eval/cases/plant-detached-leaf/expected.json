@@ -1,0 +1,21 @@
+{
+  "description": "Blue pot buddy (LEGO Botanicals 10349 Happy Plants): one round leaf detached and lying on the table to the right of the pot. Acceptable pin locations: the detached leaf on the table, or the gap in the plant where it belongs.",
+  "defects": [
+    {
+      "x": 89,
+      "y": 57,
+      "alt": [
+        [
+          50,
+          40
+        ]
+      ],
+      "label": "detached leaf on table (or its gap in the plant)",
+      "types": [
+        "MISSING PIECE",
+        "MISPLACED PIECE"
+      ]
+    }
+  ],
+  "tolerance": 25
+}
