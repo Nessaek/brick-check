@@ -52,6 +52,7 @@ function rateLimited(ip) {
 // optional: if python3/opencv/scikit-image aren't available, we skip it
 // silently and fall back to the original photos.
 const ALIGN_SCRIPT = path.join(root, 'preprocess', 'align.py');
+const GRID_SCRIPT = path.join(root, 'preprocess', 'grid.py');
 const ALIGN_TIMEOUT_MS = 15_000;
 // Prefer the project-local venv (see README) so opencv/scikit-image don't
 // need to be installed into the system Python.
@@ -128,6 +129,33 @@ function alignReferenceToBuild(mainImage, referenceImage) {
 
 const ISSUE_TYPES = new Set(['MISSING PIECE', 'WRONG ORIENTATION', 'WRONG PIECE', 'MISPLACED PIECE']);
 const ISSUE_COLORS = new Set(['blue', 'red', 'grey', 'yellow', 'green', 'black', 'white']);
+
+// Overlays a labeled coordinate grid on the build photo (preprocess/grid.py)
+// so Claude can read pin positions off the grid instead of estimating them.
+// Resolves to {mimeType, data} or null — callers fall back to the clean photo.
+function overlayGrid(image) {
+  return new Promise(resolve => {
+    if (!alignmentAvailable) return resolve(null);
+    let tmpDir;
+    try {
+      const parsed = parseDataUrl(image);
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'brickcheck-grid-'));
+      const imgPath = path.join(tmpDir, `img${EXT_BY_MIME[parsed.mimeType] || '.img'}`);
+      fs.writeFileSync(imgPath, Buffer.from(parsed.data, 'base64'));
+      execFile(PYTHON, [GRID_SCRIPT, imgPath], { timeout: ALIGN_TIMEOUT_MS, maxBuffer: 50 * 1024 * 1024 }, (error, stdout) => {
+        fs.rm(tmpDir, { recursive: true, force: true }, () => {});
+        if (error) return resolve(null);
+        try {
+          const result = JSON.parse(stdout);
+          resolve(result.success ? { mimeType: result.mime, data: result.image_base64 } : null);
+        } catch { resolve(null); }
+      });
+    } catch {
+      if (tmpDir) fs.rm(tmpDir, { recursive: true, force: true }, () => {});
+      resolve(null);
+    }
+  });
+}
 
 function normalizeIssues(issues) {
   if (!Array.isArray(issues)) return [];
@@ -253,8 +281,13 @@ async function analyse(image, referenceImage) {
   if (!SUPPORTED_MEDIA_TYPES.has(mainImage.mimeType)) {
     throw new Error(`This photo is in a format the analysis service can't read (${mainImage.mimeType}). Please use a JPG, PNG, WebP, or GIF.`);
   }
-  content.push({ type: 'text', text: 'Image 1 (the user\'s current build):' });
-  content.push({ type: 'image', source: { type: 'base64', media_type: mainImage.mimeType, data: mainImage.data } });
+  // Send Claude a gridded copy of the build photo when possible — pins get
+  // read off the grid instead of estimated. The UI keeps the clean photo.
+  const gridded = await overlayGrid(image);
+  content.push({ type: 'text', text: gridded
+    ? 'Image 1 (the user\'s current build). A thin magenta coordinate grid is overlaid on this photo: lines every 10 percent, labeled with percentage values along the top and left edges. Use the grid to read off precise x/y values for each issue. The grid is an overlay only — it is not part of the build:'
+    : 'Image 1 (the user\'s current build):' });
+  content.push({ type: 'image', source: { type: 'base64', media_type: (gridded || mainImage).mimeType, data: (gridded || mainImage).data } });
 
   if (referenceToSend) {
     const refImage = parseDataUrl(referenceToSend);

@@ -85,6 +85,8 @@ preprocess/.venv/bin/pip install -r preprocess/requirements.txt
 
 When alignment succeeds, the results screen shows a small note: *"Reference photo auto-aligned and color-corrected for a fairer comparison."*
 
+When OpenCV is available, the server also overlays a labeled coordinate grid on the copy of the build photo sent to Claude (`preprocess/grid.py`) — the model reads pin positions off the grid instead of estimating them, which measurably improves marker placement. The photo shown in the UI stays clean.
+
 Alignment also unlocks a second detection pass: the server pixel-compares the two registered photos (mean color per brick-sized cell, which cancels tiny registration errors), and sends Claude zoomed crop pairs of the strongest difference spots to verify alongside the full photos. This dramatically improves recall for small defects — one wrong brick in a large mosaic is nearly invisible in a full-frame pass but obvious in a zoomed crop pair. Try it with the pair in `test-images/` (a real LEGO mural photo with one digitally removed brick).
 
 **Note:** this currently only helps when your build has a visible rectangular frame/border (e.g. a framed mosaic). Loose builds without a frame will just use the original, unaligned photos.
