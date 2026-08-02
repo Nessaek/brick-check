@@ -473,7 +473,7 @@ http.createServer(async (req, res) => {
 }).listen(process.env.PORT || 3000, async () => {
   alignmentAvailable = await checkAlignmentAvailable();
   console.log(`BrickCheck is ready at http://localhost:${process.env.PORT || 3000}`);
-  console.log(process.env.ANTHROPIC_API_KEY ? 'Live analysis enabled (Claude).' : 'No ANTHROPIC_API_KEY found — add it to .env to analyse photos.');
+  console.log(process.env.ANTHROPIC_API_KEY ? `Live analysis enabled (${CLAUDE_MODEL}).` : 'No ANTHROPIC_API_KEY found — add it to .env to analyse photos.');
   console.log(alignmentAvailable
     ? 'Photo alignment enabled — reference photos will be auto-aligned to the build photo before comparison.'
     : 'Photo alignment disabled (python3/opencv/scikit-image not found) — install preprocess/requirements.txt to enable it.');

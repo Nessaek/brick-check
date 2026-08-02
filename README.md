@@ -52,7 +52,9 @@ You can also change the port (default `3000`):
 PORT=8080 npm start
 ```
 
-By default the server calls `claude-sonnet-5`. To use a different model (e.g. `claude-opus-5` for tougher comparisons, or `claude-haiku-4-5-20251001` for faster/cheaper checks), set `CLAUDE_MODEL` in your `.env`.
+By default the server calls `claude-sonnet-5`. To use a different model (e.g. `claude-opus-5` for tougher comparisons, or `claude-haiku-4-5-20251001` for faster/cheaper checks), set `CLAUDE_MODEL` in your `.env`. The active model is printed at startup.
+
+Measured on the eval suite (2 runs each), Haiku 4.5 is meaningfully weaker at this task than the Sonnet default — it caught 2.5/4 defects per run vs 3.7/4, ran 2 false positives per run vs 0.7, and placed pins 13–16 points off the mark where Sonnet manages 0–8. It is roughly 40% faster per analysis, so it's a reasonable choice only if latency matters far more than accuracy.
 
 ## Photo alignment
 
