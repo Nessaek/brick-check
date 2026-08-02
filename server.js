@@ -217,7 +217,7 @@ const SCAN_INSTRUCTION = 'Work methodically: mentally divide image 1 into a 3x3 
 
 // Photos of 3D builds are rarely shot from identical viewpoints — without
 // this guard the model reports parts hidden by the camera angle as missing.
-const VIEWPOINT_GUARD = 'Important: the two photos may be taken from different angles, distances, or sides, so some parts may be hidden or newly visible purely because of the viewpoint — that is NOT a defect. Report only differences in the physical build itself, and if you cannot tell whether a difference is physical or just perspective/lighting, do not report it.';
+const VIEWPOINT_GUARD = 'Important: the two photos may be taken from different angles, distances, or sides, so some parts may be hidden or newly visible purely because of the viewpoint — that is NOT a defect. Report only differences in the physical build itself, and if you cannot tell whether a difference is physical or just perspective/lighting, do not report it. Worked example of this reasoning: the reference shows a model from the front, with two side arms and a printed face visible; the build photo is a close-up from behind, where the face is on the far side and the arms are at the edge of the frame or cut off. Wrong: "add missing arms", "add missing face" — those parts are simply not in view. Right: first ask "would this part even be visible from this camera position?" — only if the answer is yes and the part is still absent is it a real issue.';
 
 function buildPrompt(hasReference) {
   return hasReference
