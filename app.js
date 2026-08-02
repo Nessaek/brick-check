@@ -157,7 +157,7 @@ analyze.addEventListener('click', async () => {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Analysis failed.');
     alignedReference = data.alignedReference || '';
-    renderIssues(data.issues, data.mode, data.hasReference, data.aligned, data.alignReason);
+    renderIssues(data.issues, data.mode, data.hasReference, data.aligned, data.alignReason, data.verified);
   } catch (error) {
     renderIssues([], 'error');
     document.querySelector('.results-heading p').textContent = error.message;
@@ -168,7 +168,7 @@ analyze.addEventListener('click', async () => {
   }
 });
 
-function renderIssues(issues, mode, hasReference = Boolean(referenceImage), aligned = false, alignReason = null) {
+function renderIssues(issues, mode, hasReference = Boolean(referenceImage), aligned = false, alignReason = null, verified = false) {
   const heading = document.querySelector('.results-heading p');
   const list = document.querySelector('.issues');
   const mapImage = document.querySelector('#map-image');
@@ -188,6 +188,9 @@ function renderIssues(issues, mode, hasReference = Boolean(referenceImage), alig
     heading.innerHTML += ' <span class="align-note">Reference photo auto-aligned and color-corrected for a fairer comparison.</span>';
   } else if (hasReference && alignReason) {
     heading.innerHTML += ` <span class="align-note">${escapeHtml(alignReason)}</span>`;
+  }
+  if (verified && issues.length) {
+    heading.innerHTML += ' <span class="align-note">Each issue was double-checked on a zoomed close-up.</span>';
   }
 
   mapCount.innerHTML = issues.length ? `<i></i> ${issues.length} issue${issues.length === 1 ? '' : 's'} marked` : 'No issues marked';

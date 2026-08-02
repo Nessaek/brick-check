@@ -87,6 +87,8 @@ When alignment succeeds, the results screen shows a small note: *"Reference phot
 
 When OpenCV is available, the server also overlays a labeled coordinate grid on the copy of the build photo sent to Claude (`preprocess/grid.py`) — the model reads pin positions off the grid instead of estimating them, which measurably improves marker placement. The photo shown in the UI stays clean.
 
+Reported issues then go through a second-pass verification (`preprocess/crop.py`): each candidate is re-examined on a zoomed crop of its exact location (plus the matching reference region when alignment succeeded) and rejected if it's explained by camera viewpoint, lighting, or a posable part in a different position. This cut false positives by roughly two thirds on the eval suite. The API response carries `verified: true` when this pass ran, and the UI notes that issues were double-checked.
+
 Alignment also unlocks a second detection pass: the server pixel-compares the two registered photos (mean color per brick-sized cell, which cancels tiny registration errors), and sends Claude zoomed crop pairs of the strongest difference spots to verify alongside the full photos. This dramatically improves recall for small defects — one wrong brick in a large mosaic is nearly invisible in a full-frame pass but obvious in a zoomed crop pair. Try it with the pair in `test-images/` (a real LEGO mural photo with one digitally removed brick).
 
 **Note:** this currently only helps when your build has a visible rectangular frame/border (e.g. a framed mosaic). Loose builds without a frame will just use the original, unaligned photos.

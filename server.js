@@ -53,6 +53,7 @@ function rateLimited(ip) {
 // silently and fall back to the original photos.
 const ALIGN_SCRIPT = path.join(root, 'preprocess', 'align.py');
 const GRID_SCRIPT = path.join(root, 'preprocess', 'grid.py');
+const CROP_SCRIPT = path.join(root, 'preprocess', 'crop.py');
 const ALIGN_TIMEOUT_MS = 15_000;
 // Prefer the project-local venv (see README) so opencv/scikit-image don't
 // need to be installed into the system Python.
@@ -219,13 +220,126 @@ const SCAN_INSTRUCTION = 'Work methodically: mentally divide image 1 into a 3x3 
 // this guard the model reports parts hidden by the camera angle as missing.
 const VIEWPOINT_GUARD = 'Important: the two photos may be taken from different angles, distances, or sides, so some parts may be hidden or newly visible purely because of the viewpoint — that is NOT a defect. Report only differences in the physical build itself, and if you cannot tell whether a difference is physical or just perspective/lighting, do not report it. Worked example of this reasoning: the reference shows a model from the front, with two side arms and a printed face visible; the build photo is a close-up from behind, where the face is on the far side and the arms are at the edge of the frame or cut off. Wrong: "add missing arms", "add missing face" — those parts are simply not in view. Right: first ask "would this part even be visible from this camera position?" — only if the answer is yes and the part is still absent is it a real issue.';
 
+const VERIFY_TOOL = {
+  name: 'verify_build_issues',
+  description: 'Return a verdict for each candidate issue after inspecting the zoomed crops.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      decisions: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            number: { type: 'integer', description: 'The candidate number being judged' },
+            verdict: { type: 'string', enum: ['confirm', 'reject'] },
+            reason: { type: 'string', description: 'One short sentence explaining the verdict' },
+            x: { type: 'integer', description: 'Refined x percent on the FULL build photo, only if the pin should move' },
+            y: { type: 'integer', description: 'Refined y percent on the FULL build photo, only if the pin should move' }
+          },
+          required: ['number', 'verdict']
+        }
+      }
+    },
+    required: ['decisions']
+  }
+};
+
+// Cuts a zoomed crop around (x, y) via preprocess/crop.py. Resolves to
+// {data, box} or null — verification silently skips crops it can't make.
+function cropAt(imagePath, x, y, mark) {
+  return new Promise(resolve => {
+    const args = [CROP_SCRIPT, imagePath, String(x), String(y)];
+    if (mark) args.push('--mark');
+    execFile(PYTHON, args, { timeout: ALIGN_TIMEOUT_MS, maxBuffer: 50 * 1024 * 1024 }, (error, stdout) => {
+      if (error) return resolve(null);
+      try {
+        const result = JSON.parse(stdout);
+        resolve(result.success ? { data: result.image_base64, box: result.box } : null);
+      } catch { resolve(null); }
+    });
+  });
+}
+
+// Second-pass verification: re-examine each first-pass issue on a zoomed
+// crop before showing it to the user. A crop concentrates the model's whole
+// visual budget on the spot in question, and judging one specific claim
+// against focused evidence is far more reliable than the open-ended search
+// of the first pass. Never throws — on any failure the first-pass issues
+// are returned unverified.
+async function verifyIssues(issues, image, referenceToSend, aligned, hasReference) {
+  if (!issues.length || !alignmentAvailable) return { issues, verified: false };
+
+  let tmpDir;
+  try {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'brickcheck-verify-'));
+    const main = parseDataUrl(image);
+    const buildPath = path.join(tmpDir, `build${EXT_BY_MIME[main.mimeType] || '.img'}`);
+    fs.writeFileSync(buildPath, Buffer.from(main.data, 'base64'));
+    let refPath = null;
+    let refImage = null;
+    if (hasReference && referenceToSend) {
+      refImage = parseDataUrl(referenceToSend);
+      refPath = path.join(tmpDir, `ref${EXT_BY_MIME[refImage.mimeType] || '.img'}`);
+      fs.writeFileSync(refPath, Buffer.from(refImage.data, 'base64'));
+    }
+
+    const content = [{
+      type: 'text',
+      text: 'You previously analysed a LEGO build photo and reported the candidate issues listed below. Double-check each one using the zoomed crops. For each candidate decide: confirm — a real, physical build issue — or reject — explained by camera viewpoint, lighting, shadow, reflection, image blur, or a posable part (hinged leaves, arms, movable elements) that is simply positioned differently. Reject only when you can clearly explain the report away; if you are genuinely unsure, confirm. The magenta circle in each build crop marks the exact reported spot. If a confirmed issue\'s pin is misplaced, include refined x/y percentages relative to the FULL build photo (each crop\'s coverage of the full photo is stated with it). Call verify_build_issues with one decision per candidate.'
+    }];
+
+    for (const issue of issues) {
+      const buildCrop = await cropAt(buildPath, issue.x, issue.y, true);
+      if (!buildCrop) return { issues, verified: false };
+      content.push({
+        type: 'text',
+        text: `Candidate ${issue.number}: [${issue.type}] ${issue.title} — ${issue.detail} (reported at x=${issue.x}%, y=${issue.y}%). Zoomed build crop covering x ${buildCrop.box[0]}–${buildCrop.box[2]}%, y ${buildCrop.box[1]}–${buildCrop.box[3]}% of the full photo:`
+      });
+      content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: buildCrop.data } });
+      if (refPath && aligned) {
+        const refCrop = await cropAt(refPath, issue.x, issue.y, false);
+        if (refCrop) {
+          content.push({ type: 'text', text: `Candidate ${issue.number} — the same region of the reference (aligned to the build photo):` });
+          content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: refCrop.data } });
+        }
+      }
+    }
+    if (refImage && !aligned) {
+      content.push({ type: 'text', text: 'Full reference photo for comparison (shot from its own angle — the crops above are from the build photo only):' });
+      content.push({ type: 'image', source: { type: 'base64', media_type: refImage.mimeType, data: refImage.data } });
+    }
+
+    let toolUse = await callClaude(content, false, VERIFY_TOOL);
+    if (!toolUse) toolUse = await callClaude(content, true, VERIFY_TOOL);
+    const decisions = toolUse?.input?.decisions;
+    if (!Array.isArray(decisions)) return { issues, verified: false };
+
+    const verdictByNumber = new Map(decisions.map(d => [d.number, d]));
+    const kept = issues.filter(issue => (verdictByNumber.get(issue.number)?.verdict || 'confirm') !== 'reject');
+    for (const issue of kept) {
+      const decision = verdictByNumber.get(issue.number);
+      if (decision && Number.isFinite(decision.x) && Number.isFinite(decision.y)) {
+        issue.x = Math.min(92, Math.max(8, Math.round(decision.x)));
+        issue.y = Math.min(88, Math.max(12, Math.round(decision.y)));
+      }
+    }
+    kept.forEach((issue, index) => { issue.number = index + 1; });
+    return { issues: kept, verified: true };
+  } catch {
+    return { issues, verified: false };
+  } finally {
+    if (tmpDir) fs.rm(tmpDir, { recursive: true, force: true }, () => {});
+  }
+}
+
 function buildPrompt(hasReference) {
   return hasReference
     ? `You are an expert LEGO build reviewer. Image 1 is the user's current build. Image 2 is the correct reference or instruction step. Compare them carefully and list every visible difference: missing pieces, wrong pieces, wrong colors, wrong orientation, or pieces in the wrong place. ${VIEWPOINT_GUARD} Describe each fix using the actual colors, shapes, and locations you see in the photos. Only report issues you can clearly see. ${SCAN_INSTRUCTION} If the build matches the reference, call the tool with an empty issues array.`
     : `You are an expert LEGO build reviewer. Image 1 is the user's current build. No reference image was provided, so inspect the build for obvious mistakes: missing pieces leaving gaps or exposed studs, pieces facing the wrong way, wrong colors for the section, unstable or floating parts, or incomplete sub-assemblies. Only report issues you can clearly see. Describe each fix using the actual colors, shapes, and locations visible in the photo. ${SCAN_INSTRUCTION} If nothing looks clearly wrong, call the tool with an empty issues array.`;
 }
 
-async function callClaude(content, forceTool) {
+async function callClaude(content, forceTool, tool = REPORT_ISSUES_TOOL) {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -237,8 +351,8 @@ async function callClaude(content, forceTool) {
       model: CLAUDE_MODEL,
       max_tokens: 3000,
       messages: [{ role: 'user', content }],
-      tools: [REPORT_ISSUES_TOOL],
-      tool_choice: forceTool ? { type: 'tool', name: 'report_build_issues' } : { type: 'auto' }
+      tools: [tool],
+      tool_choice: forceTool ? { type: 'tool', name: tool.name } : { type: 'auto' }
     })
   });
 
@@ -246,7 +360,7 @@ async function callClaude(content, forceTool) {
   if (!response.ok) {
     throw new Error(payload.error?.message || 'The vision service could not analyse this photo.');
   }
-  return payload.content?.find(block => block.type === 'tool_use' && block.name === 'report_build_issues') || null;
+  return payload.content?.find(block => block.type === 'tool_use' && block.name === tool.name) || null;
 }
 
 async function analyse(image, referenceImage) {
@@ -326,8 +440,12 @@ async function analyse(image, referenceImage) {
   if (!toolUse) toolUse = await callClaude(content, true);
   if (!toolUse) throw new Error('The vision service returned an unexpected response.');
 
+  const firstPass = normalizeIssues(toolUse.input?.issues);
+  const { issues, verified } = await verifyIssues(firstPass, image, referenceToSend, aligned, Boolean(referenceImage));
+
   return {
-    issues: normalizeIssues(toolUse.input?.issues),
+    issues,
+    verified,
     mode: 'live',
     hasReference: Boolean(referenceImage),
     aligned,
