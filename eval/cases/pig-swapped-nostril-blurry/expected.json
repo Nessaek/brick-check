@@ -1,0 +1,22 @@
+{
+  "description": "Same two planted changes as pig-swapped-nostril, but shot with a blurry/soft phone photo - tests whether image quality costs detection.",
+  "tolerance": 20,
+  "ignore": [
+    { "x": 56, "y": 40, "label": "teal back piece shown in the product photo - never part of this build" },
+    { "x": 30, "y": 63, "label": "feet differ from the product photo in the correct build too" }
+  ],
+  "defects": [
+    {
+      "x": 38,
+      "y": 47,
+      "label": "right nostril is a pale pink flat stud, should be a magenta ring",
+      "types": ["WRONG PIECE", "MISPLACED PIECE"]
+    },
+    {
+      "x": 24,
+      "y": 24,
+      "label": "extra magenta round piece on top of the head",
+      "types": ["WRONG PIECE", "MISPLACED PIECE", "MISSING PIECE"]
+    }
+  ]
+}

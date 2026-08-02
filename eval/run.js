@@ -13,6 +13,10 @@
 //     {
 //       "description": "what this case tests",
 //       "tolerance": 25,        // optional per-case override of EVAL_TOLERANCE
+//       "ignore": [             // optional: known non-defect differences.
+//         { "x": 65, "y": 40,   // Issues reported here are neither credited
+//           "label": "teal piece not part of this build" }  // nor penalised.
+//       ],
 //       "defects": [
 //         { "x": 82, "y": 78, "label": "missing brick on tram panel",
 //           "types": ["MISSING PIECE", "WRONG PIECE"],    // types optional
@@ -70,7 +74,7 @@ async function analyse(body, attempt = 0) {
   }
 }
 
-function score(expectedDefects, issues, tolerance) {
+function score(expectedDefects, issues, tolerance, ignoreZones = []) {
   let remaining = [...issues];
   const results = [];
   for (const defect of expectedDefects) {
@@ -92,7 +96,15 @@ function score(expectedDefects, issues, tolerance) {
       results.push({ defect, caught: false });
     }
   }
-  return { results, falsePositives: remaining };
+  // Known non-defect differences (a reference that legitimately shows extra
+  // parts, a different sub-assembly the build never had). Reporting these is
+  // defensible, so they are dropped from scoring rather than counted against
+  // the app — but they earn no credit either.
+  const ignored = remaining.filter(issue =>
+    ignoreZones.some(zone => Math.hypot(issue.x - zone.x, issue.y - zone.y) <= (zone.radius || tolerance)));
+  remaining = remaining.filter(issue => !ignored.includes(issue));
+
+  return { results, falsePositives: remaining, ignored };
 }
 
 async function main() {
@@ -132,7 +144,7 @@ async function main() {
 
     const defects = expected.defects || [];
     const tolerance = Number(expected.tolerance || TOLERANCE);
-    const { results, falsePositives } = score(defects, data.issues || [], tolerance);
+    const { results, falsePositives, ignored } = score(defects, data.issues || [], tolerance, expected.ignore || []);
     const caught = results.filter(r => r.caught).length;
     totalDefects += defects.length;
     totalCaught += caught;
@@ -153,6 +165,9 @@ async function main() {
     }
     for (const fp of falsePositives) {
       console.log(`    FALSE+  ${fp.type} @ ${fp.x},${fp.y} — ${fp.title}`);
+    }
+    for (const ig of ignored) {
+      console.log(`    IGNORED ${ig.type} @ ${ig.x},${ig.y} — ${ig.title}`);
     }
     if (!defects.length && !falsePositives.length) console.log('    CLEAN   correctly reported no issues');
   }

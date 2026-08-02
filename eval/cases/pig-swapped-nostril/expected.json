@@ -1,0 +1,22 @@
+{
+  "description": "Pink creature (product MDP-6602) vs official product photo cropped to the figure. Two planted changes: right nostril swapped for a pale pink flat stud instead of a magenta ring, and an extra magenta round piece stuck on top of the head.",
+  "tolerance": 20,
+  "ignore": [
+    { "x": 66, "y": 40, "label": "teal back piece shown in the product photo - never part of this build" },
+    { "x": 46, "y": 62, "label": "feet differ from the product photo in the correct build too" }
+  ],
+  "defects": [
+    {
+      "x": 55,
+      "y": 44,
+      "label": "right nostril is a pale pink flat stud, should be a magenta ring",
+      "types": ["WRONG PIECE", "MISPLACED PIECE"]
+    },
+    {
+      "x": 42,
+      "y": 17,
+      "label": "extra magenta round piece on top of the head",
+      "types": ["WRONG PIECE", "MISPLACED PIECE", "MISSING PIECE"]
+    }
+  ]
+}

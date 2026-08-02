@@ -1,0 +1,4 @@
+{
+  "description": "The CORRECT pink creature photographed lying on its side from two different rotations. Nothing is wrong - any reported issue is a false positive. Tests that a rotated viewpoint is not mistaken for a build mistake.",
+  "defects": []
+}

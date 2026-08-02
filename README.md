@@ -168,7 +168,9 @@ npm start     # in one terminal
 npm run eval  # in another
 ```
 
-Each case lives in `eval/cases/<name>/` as `build.jpg` + optional `reference.jpg` + `expected.json` listing the known defects (or an empty list for a correct build). A defect counts as caught when a reported issue lands within ±12 percentage points of its true x/y (`EVAL_TOLERANCE` overrides this); a defect may also list alternate acceptable locations as `"alt": [[x, y], ...]` — useful when a defect could fairly be pinned in more than one place (e.g. a detached piece lying next to the build, or the gap it came from). Reported issues matching no known defect count as false positives. The runner prints a per-case breakdown and a scorecard, and exits non-zero if any case fails.
+Each case lives in `eval/cases/<name>/` as `build.jpg` + optional `reference.jpg` + `expected.json` listing the known defects (or an empty list for a correct build). A defect counts as caught when a reported issue lands within ±12 percentage points of its true x/y (`EVAL_TOLERANCE` overrides this, and a case can set its own `"tolerance"`); a defect may also list alternate acceptable locations as `"alt": [[x, y], ...]` — useful when a defect could fairly be pinned in more than one place (e.g. a detached piece lying next to the build, or the gap it came from). Reported issues matching no known defect count as false positives.
+
+A case can also declare `"ignore": [{ "x": .., "y": .., "label": ".." }]` for places where the reference and the build legitimately differ without it being a build mistake — an official product photo showing an accessory the builder never had, for instance. Issues reported there are neither credited nor penalised. The runner prints a per-case breakdown and a scorecard, and exits non-zero if any case fails.
 
 To add a case: photograph a build complete (that's `reference.jpg`), remove or swap one piece and photograph again (`build.jpg`), then record what you changed in `expected.json`. Each case costs one Claude vision call per run, so keep the set curated.
 
