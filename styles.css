@@ -6,3 +6,13 @@
 .compare canvas.crop { width: 150px; height: 150px; max-width: 100%; display: block; border-radius: 10px; border: 1px solid rgba(15, 30, 20, 0.14); background: #f2f1ec; }
 .compare figcaption { font-size: 12px; color: #6b7568; margin-top: 5px; font-weight: 600; letter-spacing: 0.02em; }
 @media (max-width: 560px) { .compare canvas.crop { width: 120px; height: 120px; } }
+
+/* Issue pins mark a percentage position on the build photo, so the photo's
+   rendered box must BE the coordinate space: let the image define the
+   container's height rather than letterboxing it inside a fixed 305px
+   (which left percentage pins offset by the empty bars). */
+.map-image { height: auto; }
+.map-photo { width: 100%; height: auto; display: block; object-fit: initial; }
+/* Centre each pin on its point instead of hanging it down-and-right. */
+.pin { transform: translate(-50%, -50%); }
+.pin.active-pin { transform: translate(-50%, -50%) scale(1.24); }

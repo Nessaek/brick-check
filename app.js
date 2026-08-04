@@ -199,12 +199,17 @@ function renderIssues(issues, mode, hasReference = Boolean(referenceImage), alig
     : '';
 
   const refUrl = hasReference ? (alignedReference || referenceImage) : '';
+  // A same-coordinates crop of the reference only lines up with the build
+  // when the reference was aligned onto it. Otherwise the crop would land on
+  // whatever happens to be at those coordinates in a differently-framed
+  // photo — usually background — so show the whole reference instead.
+  const refCaption = aligned ? 'Should look like' : 'Reference photo';
   const compareStrip = refUrl
-    ? '<div class="compare"><figure><canvas class="crop"></canvas><figcaption>Your build</figcaption></figure><figure><canvas class="crop"></canvas><figcaption>Should look like</figcaption></figure></div>'
+    ? `<div class="compare"><figure><canvas class="crop"></canvas><figcaption>Your build</figcaption></figure><figure><canvas class="crop"></canvas><figcaption>${refCaption}</figcaption></figure></div>`
     : '<div class="compare"><figure><canvas class="crop"></canvas><figcaption>Look here</figcaption></figure></div>';
   list.innerHTML = issues.map((issue, index) => `<article class="issue ${index === 0 ? 'active' : ''}" data-pin="${issue.number}"><div class="issue-number">${issue.number}</div><div><span class="severity ${severityClass(issue.type)}">${issue.type}</span><h3>${escapeHtml(issue.title)}</h3><p>${escapeHtml(issue.detail)}</p>${compareStrip}<div class="fix-visual"><span class="mini-brick ${issue.color || 'grey'}"></span><span>${escapeHtml(issue.action || 'Fix this')} <b>→</b></span></div></div><button class="chevron">⌄</button></article>`).join('');
 
-  renderIssueCrops(issues, refUrl);
+  renderIssueCrops(issues, refUrl, aligned);
   bindResultInteractions();
 }
 
@@ -212,7 +217,7 @@ function renderIssues(issues, mode, hasReference = Boolean(referenceImage), alig
 // (when a reference exists) the same region of the reference. If the server
 // aligned the reference onto the build photo's perspective, the two crops
 // line up brick-for-brick; otherwise the reference crop is approximate.
-async function renderIssueCrops(issues, refUrl) {
+async function renderIssueCrops(issues, refUrl, aligned) {
   if (!uploadedImage || !issues.length) return;
   try {
     const buildImg = new Image();
@@ -230,23 +235,40 @@ async function renderIssueCrops(issues, refUrl) {
       if (!issue) return;
       const canvases = card.querySelectorAll('canvas.crop');
       if (canvases[0]) drawCrop(canvases[0], buildImg, issue.x, issue.y, true);
-      if (canvases[1] && refImg) drawCrop(canvases[1], refImg, issue.x, issue.y, false);
+      if (canvases[1] && refImg) {
+        if (aligned) drawCrop(canvases[1], refImg, issue.x, issue.y, false);
+        else drawWhole(canvases[1], refImg);
+      }
     });
   } catch {
     // Crops are a bonus — if an image fails to decode, the cards still work.
   }
 }
 
-function drawCrop(canvas, img, xPct, yPct, markSpot) {
+function prepareCanvas(canvas) {
   const size = 150;
   const dpr = window.devicePixelRatio || 1;
   canvas.width = size * dpr;
   canvas.height = size * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  return { ctx, dpr };
+}
+
+// Fits a whole photo into the square canvas, letterboxed.
+function drawWhole(canvas, img) {
+  const { ctx } = prepareCanvas(canvas);
+  const scale = Math.min(canvas.width / img.naturalWidth, canvas.height / img.naturalHeight);
+  const w = img.naturalWidth * scale;
+  const h = img.naturalHeight * scale;
+  ctx.drawImage(img, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+}
+
+function drawCrop(canvas, img, xPct, yPct, markSpot) {
+  const { ctx, dpr } = prepareCanvas(canvas);
   const side = Math.min(img.naturalWidth, img.naturalHeight) * 0.32;
   const sx = Math.max(0, Math.min(img.naturalWidth - side, img.naturalWidth * xPct / 100 - side / 2));
   const sy = Math.max(0, Math.min(img.naturalHeight - side, img.naturalHeight * yPct / 100 - side / 2));
-  const ctx = canvas.getContext('2d');
-  ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(img, sx, sy, side, side, 0, 0, canvas.width, canvas.height);
   if (markSpot) {
     const cx = (img.naturalWidth * xPct / 100 - sx) / side * canvas.width;
@@ -279,9 +301,10 @@ function bindResultInteractions() {
 
 function activateIssue(pin) {
   document.querySelectorAll('.issue').forEach(item => item.classList.toggle('active', item.dataset.pin === pin));
+  // Scaling is handled by the .active-pin CSS rule — setting style.transform
+  // here would clobber the translate() that centres the pin on its point.
   document.querySelectorAll('.pin').forEach(item => {
     item.classList.toggle('active-pin', item.dataset.pin === pin);
-    item.style.transform = item.dataset.pin === pin ? 'scale(1.24)' : '';
   });
 }
 document.querySelector('#new-scan').addEventListener('click', () => { results.classList.add('hidden'); document.querySelector('#workspace').scrollIntoView({ behavior: 'smooth' }); });
