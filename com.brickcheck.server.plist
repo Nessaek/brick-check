@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.brickcheck.server</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/Apple/.nvm/versions/node/v26.3.0/bin/node</string>
+        <string>/Users/Apple/Code/brick-check/server.js</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/Apple/Code/brick-check</string>
+
+    <!-- ANTHROPIC_API_KEY, and APP_PASSWORD if you set one, are read from
+         the project's .env file at startup, so no secrets live in here. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PORT</key>
+        <string>3000</string>
+        <!-- Loopback only, so joining a café network does not hand the app
+             (and your API credit) to everyone on it. Expose it to your own
+             devices with `tailscale serve --bg 3000`. Remove this key if you
+             would rather reach the Mac's 100.x Tailscale address directly. -->
+        <key>HOST</key>
+        <string>127.0.0.1</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/Apple/Code/brick-check/server.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/Apple/Code/brick-check/server.log</string>
+</dict>
+</plist>

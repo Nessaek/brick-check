@@ -180,7 +180,27 @@ Runtime environment variables:
 
 Before exposing it to anyone else: set `APP_PASSWORD`, set a spend cap in the Anthropic console (the real backstop — each analysis costs one to two Claude vision calls), and raise your proxy's request timeout above 60 seconds. Note the rate limiter is in-memory, so it resets on every restart and is per-instance.
 
-If it is only ever for you, the simplest and safest option is not to deploy at all: keep it running locally and reach it from your phone over a Tailscale or Cloudflare tunnel.
+### Personal setup (no hosting)
+
+If it is only ever for you, do not deploy it at all — run it on your own machine and reach it from your phone over Tailscale. Nothing is exposed to the internet, the API key never leaves the machine, and there is no bill.
+
+`com.brickcheck.server.plist` (a user LaunchAgent in `~/Library/LaunchAgents`) keeps the server running across logins. It sets `HOST=127.0.0.1`, so the app listens on loopback only and joining an untrusted network does not hand it to everyone there. `ANTHROPIC_API_KEY` is read from `.env`, so no secrets live in the plist.
+
+Install Tailscale on the Mac and your phone, sign both into the same tailnet, then publish the loopback port to your own devices:
+
+```bash
+tailscale serve --bg 3000
+```
+
+That gives an HTTPS URL on your tailnet (`https://<machine>.<tailnet>.ts.net`) reachable from your phone, with no port forwarding and no certificate warnings. `tailscale serve status` shows it; `tailscale serve --https=443 off` withdraws it.
+
+Managing the service:
+
+```bash
+launchctl kickstart -k gui/$UID/com.brickcheck.server
+```
+
+`launchctl print gui/$UID/com.brickcheck.server` shows its state, output goes to `server.log`, and `launchctl bootout gui/$UID/com.brickcheck.server` stops it. Note `tailscale funnel` is the one thing to avoid here: it publishes to the whole internet, at which point `APP_PASSWORD` stops being optional.
 
 ## Evaluating detection quality
 

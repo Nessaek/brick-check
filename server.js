@@ -504,9 +504,13 @@ http.createServer(async (req, res) => {
   const target = path.resolve(root, `.${file}`);
   if (!target.startsWith(root) || !fs.existsSync(target)) return send(res, 404, 'Not found', 'text/plain');
   send(res, 200, fs.readFileSync(target), mime[path.extname(target)] || 'application/octet-stream');
-}).listen(process.env.PORT || 3000, async () => {
+// Binding all interfaces is right inside a container, but on a laptop it
+// also offers the app to every device on whatever network you have joined.
+// Set HOST=127.0.0.1 to keep it on loopback and expose it deliberately
+// instead (e.g. `tailscale serve`).
+}).listen(process.env.PORT || 3000, process.env.HOST || '0.0.0.0', async () => {
   alignmentAvailable = await checkAlignmentAvailable();
-  console.log(`BrickCheck is ready at http://localhost:${process.env.PORT || 3000}`);
+  console.log(`BrickCheck is ready at http://${process.env.HOST || 'localhost'}:${process.env.PORT || 3000}`);
   console.log(process.env.ANTHROPIC_API_KEY ? `Live analysis enabled (${CLAUDE_MODEL}).` : 'No ANTHROPIC_API_KEY found — add it to .env to analyse photos.');
   console.log(alignmentAvailable
     ? 'Image processing enabled — photo alignment, coordinate grid and zoomed issue verification are all active.'
