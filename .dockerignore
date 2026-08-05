@@ -1,0 +1,20 @@
+.git
+.gitignore
+.idea
+.claude
+.DS_Store
+
+# Secrets — supply these as runtime environment variables instead.
+.env
+local.env
+
+# The host virtualenv holds platform-specific binaries; the image builds
+# its own. Copying this in would break OpenCV inside the container.
+preprocess/.venv
+preprocess/__pycache__
+node_modules
+
+# Development-only material, not needed to serve the app.
+eval
+test-images
+README.md

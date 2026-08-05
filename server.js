@@ -2,6 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 const { execFile } = require('child_process');
 
 const root = __dirname;
@@ -36,6 +37,35 @@ const SUPPORTED_MEDIA_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', '
 // (a Claude vision call), so cap bursts even for personal use.
 const RATE_LIMIT = { windowMs: 60_000, max: 8 };
 const requestLog = new Map();
+
+// Behind a load balancer every request arrives from the proxy's address, so
+// keying the rate limit on the socket address would put all visitors in one
+// bucket. X-Forwarded-For is trivially spoofable, though, so only trust it
+// when TRUST_PROXY says something upstream is setting it.
+const TRUST_PROXY = process.env.TRUST_PROXY === '1';
+function clientIp(req) {
+  if (TRUST_PROXY) {
+    const forwarded = req.headers['x-forwarded-for'];
+    if (forwarded) return forwarded.split(',')[0].trim();
+  }
+  return req.socket.remoteAddress;
+}
+
+// Optional shared-password gate (HTTP Basic). Unset APP_PASSWORD — the
+// default, and how local development runs — leaves the app wide open, which
+// is fine on localhost but must not be how it is exposed to the internet:
+// every analysis spends real money on the Anthropic API.
+const APP_PASSWORD = process.env.APP_PASSWORD || '';
+function authorized(req) {
+  if (!APP_PASSWORD) return true;
+  const [scheme, encoded] = (req.headers.authorization || '').split(' ');
+  if (scheme !== 'Basic' || !encoded) return false;
+  const decoded = Buffer.from(encoded, 'base64').toString('utf8');
+  const supplied = Buffer.from(decoded.slice(decoded.indexOf(':') + 1));
+  const expected = Buffer.from(APP_PASSWORD);
+  return supplied.length === expected.length && crypto.timingSafeEqual(supplied, expected);
+}
+
 function rateLimited(ip) {
   const now = Date.now();
   const recent = (requestLog.get(ip) || []).filter(t => now - t < RATE_LIMIT.windowMs);
@@ -458,8 +488,12 @@ async function analyse(image, referenceImage) {
 }
 
 http.createServer(async (req, res) => {
+  if (!authorized(req)) {
+    res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="BrickCheck", charset="UTF-8"' });
+    return res.end('Authentication required.');
+  }
   if (req.method === 'POST' && req.url === '/api/analyze') {
-    if (rateLimited(req.socket.remoteAddress)) {
+    if (rateLimited(clientIp(req))) {
       return send(res, 429, { error: 'Too many analyses in a short time — wait a minute and try again.' });
     }
     try { const { image, referenceImage } = await readBody(req); return send(res, 200, await analyse(image, referenceImage)); }
@@ -475,6 +509,9 @@ http.createServer(async (req, res) => {
   console.log(`BrickCheck is ready at http://localhost:${process.env.PORT || 3000}`);
   console.log(process.env.ANTHROPIC_API_KEY ? `Live analysis enabled (${CLAUDE_MODEL}).` : 'No ANTHROPIC_API_KEY found — add it to .env to analyse photos.');
   console.log(alignmentAvailable
-    ? 'Photo alignment enabled — reference photos will be auto-aligned to the build photo before comparison.'
-    : 'Photo alignment disabled (python3/opencv/scikit-image not found) — install preprocess/requirements.txt to enable it.');
+    ? 'Image processing enabled — photo alignment, coordinate grid and zoomed issue verification are all active.'
+    : 'Image processing DISABLED (python3/opencv/scikit-image not found) — alignment, the coordinate grid and issue verification are all off, which markedly reduces accuracy. Install preprocess/requirements.txt to enable them.');
+  console.log(APP_PASSWORD
+    ? 'Password protection enabled (APP_PASSWORD).'
+    : 'No APP_PASSWORD set — anyone who can reach this server can spend your API credit. Set one before exposing it beyond localhost.');
 });

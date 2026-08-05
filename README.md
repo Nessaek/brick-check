@@ -159,6 +159,29 @@ Under the hood, the server sends both images to Claude in a single message with 
 - `alignReason` explains why alignment didn't happen (e.g. `"Could not detect the build's frame/border in one of the photos."`). It's `null` when `aligned` is `true` or no reference photo was provided.
 - `alignedReference` is the warped, color-corrected reference photo (as a data URL) when `aligned` is `true`, otherwise `null`. It shares the build photo's coordinate system, so the UI can crop matching "yours vs. target" regions around each issue.
 
+## Deploying
+
+The one thing to get right: **Python and OpenCV are not optional in practice.** Photo alignment, the coordinate grid that makes issue pins accurate, and the zoomed second-pass verification that filters false positives are all gated on them. Deploy somewhere without Python and the app still starts and still answers — just measurably worse. The startup log tells you which mode you are in, so read it after the first deploy.
+
+That rules out plain serverless functions, which also can't hold the 15–45 second analysis request open on default plans. Use a container host (Fly.io, Railway, Render) or a small VPS. The included `Dockerfile` builds Node plus the Python stack:
+
+```bash
+docker build -t brickcheck . && docker run -p 3000:3000 -e ANTHROPIC_API_KEY=sk-ant-... -e APP_PASSWORD=choose-one brickcheck
+```
+
+Runtime environment variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `ANTHROPIC_API_KEY` | Required. Never bake it into the image. |
+| `APP_PASSWORD` | Shared password (HTTP Basic). Unset means **no authentication at all** — every visitor can spend your API credit. |
+| `TRUST_PROXY` | Set to `1` only when a load balancer sets `X-Forwarded-For`. The Dockerfile defaults it on; unset it if the container is exposed directly, or the rate limit becomes trivially spoofable. |
+| `PORT`, `CLAUDE_MODEL` | Optional. |
+
+Before exposing it to anyone else: set `APP_PASSWORD`, set a spend cap in the Anthropic console (the real backstop — each analysis costs one to two Claude vision calls), and raise your proxy's request timeout above 60 seconds. Note the rate limiter is in-memory, so it resets on every restart and is per-instance.
+
+If it is only ever for you, the simplest and safest option is not to deploy at all: keep it running locally and reach it from your phone over a Tailscale or Cloudflare tunnel.
+
 ## Evaluating detection quality
 
 The repo includes an eval harness that scores the analysis pipeline against photo pairs with known ground truth — run it after changing the prompt, the model, or the alignment/diff code to see whether detection actually got better:
