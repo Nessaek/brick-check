@@ -252,9 +252,21 @@ To add a case: photograph a build complete (that's `reference.jpg`), remove or s
 
 ### Where it currently stands
 
-Nine cases: a framed mosaic (real photo, one brick digitally removed), two LEGO Botanicals pot buddies, and a pink creature compared against its official product shot. Recent full runs land around **7/9 cases, 7/8 defects caught, 2 false positives**. The remaining failure is consistent and known: on a correct build photographed from two angles, parts that are simply out of frame get reported as missing.
+Nine cases: a framed mosaic (real photo, one brick digitally removed), two LEGO Botanicals pot buddies, and a pink creature compared against its official product shot. Across five unchanged runs of the same configuration the suite has landed anywhere from **4/9 to 7/9 cases, 4–8 defects caught, and 2–3 false positives**. The most persistent failure is known: on a correct build photographed from two angles, parts that are simply out of frame get reported as missing.
 
-Expect run-to-run variance — the same configuration has flipped a case between consecutive runs. Judge changes on the aggregate across a couple of runs, not on a single case moving. The harness has repeatedly earned this: it rejected a stricter prompt rule that *sounded* right but suppressed a real defect, rejected an image-based few-shot example that taught the model to excuse the very defects it should catch, and showed Haiku 4.5 to be meaningfully weaker here than the Sonnet default.
+**That spread is the single most important thing to know before using this harness.** A single run tells you very little — a 4/9 and a 7/9 came from consecutive runs with identical code. Judge any change on the aggregate of at least two or three runs, and treat one case flipping as noise until it repeats.
+
+When the verification pass discards a candidate, the runner attributes the miss rather than leaving it ambiguous:
+
+```
+MISSED  yellow plates removed from pot front
+        ^ found by the first pass, then rejected on verification:
+          "The marked spot shows only the background floral rug pattern, not a leaf piece at all."
+```
+
+That distinction matters because the two causes need opposite fixes — a first-pass miss calls for better detection, while a wrongly-rejected candidate calls for a gentler verifier or better coordinates.
+
+The harness has repeatedly earned its cost: it rejected a stricter prompt rule that *sounded* right but suppressed a real defect, rejected an image-based few-shot example that taught the model to excuse the very defects it should catch, showed Haiku 4.5 to be meaningfully weaker here than the Sonnet default, and disproved a "blurry photos beat sharp ones" theory that two runs had appeared to support.
 
 ## Tips for better results
 

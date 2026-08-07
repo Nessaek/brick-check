@@ -160,7 +160,16 @@ async function main() {
         const absorbedNote = r.absorbed ? ` (+${r.absorbed} related report${r.absorbed === 1 ? '' : 's'})` : '';
         console.log(`    CAUGHT  ${r.defect.label || `defect @ ${r.defect.x},${r.defect.y}`} — reported @ ${r.issue.x},${r.issue.y} (off by ${r.dist})${typeNote}${absorbedNote}`);
       } else {
+        // A miss has two very different causes: the first pass never saw it,
+        // or the verification pass saw it and threw it away. Those call for
+        // opposite fixes, so attribute it rather than leaving it ambiguous.
+        const spots = [[r.defect.x, r.defect.y], ...(r.defect.alt || [])];
+        const discarded = (data.rejected || []).find(candidate =>
+          Math.min(...spots.map(([sx, sy]) => Math.hypot(candidate.x - sx, candidate.y - sy))) <= tolerance);
         console.log(`    MISSED  ${r.defect.label || `defect @ ${r.defect.x},${r.defect.y}`}`);
+        if (discarded) {
+          console.log(`            ^ found by the first pass, then rejected on verification: "${discarded.reason || 'no reason given'}"`);
+        }
       }
     }
     for (const fp of falsePositives) {

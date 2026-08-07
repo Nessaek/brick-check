@@ -40,9 +40,22 @@ const SUPPORTED_MEDIA_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', '
 // reaches the cap. Anthropic bills in USD; set the cap in pounds with
 // MONTHLY_BUDGET_GBP (GBP_USD converts it) or directly with MONTHLY_BUDGET_USD.
 const USAGE_FILE = path.join(root, 'usage.json');
-const GBP_USD = Number(process.env.GBP_USD) || 1.30;
-const MONTHLY_BUDGET_USD = Number(process.env.MONTHLY_BUDGET_USD)
-  || (Number(process.env.MONTHLY_BUDGET_GBP) || 5) * GBP_USD;
+
+// `Number(x) || fallback` would quietly turn a deliberate budget of 0 —
+// "allow no spending at all" — back into the default, so parse explicitly.
+function envNumber(name, fallback, min = -Infinity) {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === '') return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < min) {
+    console.warn(`Ignoring invalid ${name}="${raw}"; using ${fallback}.`);
+    return fallback;
+  }
+  return value;
+}
+
+const GBP_USD = envNumber('GBP_USD', 1.30, 0.01);
+const MONTHLY_BUDGET_USD = envNumber('MONTHLY_BUDGET_USD', envNumber('MONTHLY_BUDGET_GBP', 5, 0) * GBP_USD, 0);
 
 // USD per million tokens, from Anthropic's published pricing. Cache reads
 // bill at 0.1x the input rate and cache writes at 1.25x.
@@ -133,7 +146,14 @@ function authorized(req) {
 
 function rateLimited(ip) {
   const now = Date.now();
-  const recent = (requestLog.get(ip) || []).filter(t => now - t < RATE_LIMIT.windowMs);
+  // Every distinct address adds an entry, so on a public deployment the map
+  // would grow forever. Sweep expired entries once it gets large.
+  if (requestLog.size > 500) {
+    for (const [key, times] of requestLog) {
+      if (times.every(time => now - time >= RATE_LIMIT.windowMs)) requestLog.delete(key);
+    }
+  }
+  const recent = (requestLog.get(ip) || []).filter(time => now - time < RATE_LIMIT.windowMs);
   if (recent.length >= RATE_LIMIT.max) { requestLog.set(ip, recent); return true; }
   recent.push(now);
   requestLog.set(ip, recent);
@@ -166,18 +186,40 @@ const EXT_BY_MIME = {
 let alignmentAvailable = false;
 
 function send(res, code, body, contentType = 'application/json') {
+  // An oversized or aborted request destroys the socket, so a reply may no
+  // longer be deliverable — writing anyway throws inside the request handler.
+  if (res.writableEnded || res.destroyed) return;
   res.writeHead(code, { 'Content-Type': contentType });
   res.end(Buffer.isBuffer(body) || typeof body === 'string' ? body : JSON.stringify(body));
 }
+
+const MAX_BODY_BYTES = 15_000_000;
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
-    req.on('data', chunk => { body += chunk; if (body.length > 15_000_000) reject(new Error('Image is too large.')); });
+    let rejected = false;
+    req.on('data', chunk => {
+      if (rejected) return;
+      body += chunk;
+      if (body.length > MAX_BODY_BYTES) {
+        // Rejecting alone leaves the client streaming into memory we keep
+        // appending to. Drop what we have and stop reading; pausing rather
+        // than destroying keeps the socket alive long enough to send a real
+        // status back instead of resetting the connection mid-upload.
+        rejected = true;
+        body = '';
+        req.pause();
+        const error = new Error('That photo is too large — please use one under 15 MB.');
+        error.statusCode = 413;
+        reject(error);
+      }
+    });
     req.on('end', () => {
+      if (rejected) return;
       try { resolve(JSON.parse(body)); }
       catch { reject(new Error('Invalid request body.')); }
     });
-    req.on('error', reject);
+    req.on('error', error => { if (!rejected) reject(error); });
   });
 }
 function parseDataUrl(dataUrl) {
@@ -363,7 +405,7 @@ function cropAt(imagePath, x, y, mark) {
 // of the first pass. Never throws — on any failure the first-pass issues
 // are returned unverified.
 async function verifyIssues(issues, image, referenceToSend, aligned, hasReference) {
-  if (!issues.length || !alignmentAvailable) return { issues, verified: false };
+  if (!issues.length || !alignmentAvailable) return { issues, verified: false, rejected: [] };
 
   let tmpDir;
   try {
@@ -386,7 +428,7 @@ async function verifyIssues(issues, image, referenceToSend, aligned, hasReferenc
 
     for (const issue of issues) {
       const buildCrop = await cropAt(buildPath, issue.x, issue.y, true);
-      if (!buildCrop) return { issues, verified: false };
+      if (!buildCrop) return { issues, verified: false, rejected: [] };
       content.push({
         type: 'text',
         text: `Candidate ${issue.number}: [${issue.type}] ${issue.title} — ${issue.detail} (reported at x=${issue.x}%, y=${issue.y}%). Zoomed build crop covering x ${buildCrop.box[0]}–${buildCrop.box[2]}%, y ${buildCrop.box[1]}–${buildCrop.box[3]}% of the full photo:`
@@ -408,10 +450,22 @@ async function verifyIssues(issues, image, referenceToSend, aligned, hasReferenc
     let toolUse = await callClaude(content, false, VERIFY_TOOL);
     if (!toolUse) toolUse = await callClaude(content, true, VERIFY_TOOL);
     const decisions = toolUse?.input?.decisions;
-    if (!Array.isArray(decisions)) return { issues, verified: false };
+    if (!Array.isArray(decisions)) return { issues, verified: false, rejected: [] };
 
     const verdictByNumber = new Map(decisions.map(d => [d.number, d]));
     const kept = issues.filter(issue => (verdictByNumber.get(issue.number)?.verdict || 'confirm') !== 'reject');
+    // Keep what this pass threw away. Without it, a defect the eval says was
+    // missed is unattributable: it could be a first-pass miss or a wrongly
+    // rejected candidate, and those call for opposite fixes.
+    const rejected = issues
+      .filter(issue => verdictByNumber.get(issue.number)?.verdict === 'reject')
+      .map(issue => ({
+        type: issue.type,
+        title: issue.title,
+        x: issue.x,
+        y: issue.y,
+        reason: verdictByNumber.get(issue.number)?.reason || ''
+      }));
     for (const issue of kept) {
       const decision = verdictByNumber.get(issue.number);
       if (decision && Number.isFinite(decision.x) && Number.isFinite(decision.y)) {
@@ -420,9 +474,9 @@ async function verifyIssues(issues, image, referenceToSend, aligned, hasReferenc
       }
     }
     kept.forEach((issue, index) => { issue.number = index + 1; });
-    return { issues: kept, verified: true };
+    return { issues: kept, verified: true, rejected };
   } catch {
-    return { issues, verified: false };
+    return { issues, verified: false, rejected: [] };
   } finally {
     if (tmpDir) fs.rm(tmpDir, { recursive: true, force: true }, () => {});
   }
@@ -542,7 +596,7 @@ async function analyse(image, referenceImage) {
   if (!toolUse) throw new Error('The vision service returned an unexpected response.');
 
   const firstPass = normalizeIssues(toolUse.input?.issues);
-  const { issues, verified } = await verifyIssues(firstPass, image, referenceToSend, aligned, Boolean(referenceImage));
+  const { issues, verified, rejected } = await verifyIssues(firstPass, image, referenceToSend, aligned, Boolean(referenceImage));
 
   return {
     issues,
@@ -555,6 +609,9 @@ async function analyse(image, referenceImage) {
     // coordinate system — the client uses it to crop matching "yours vs
     // target" regions around each issue.
     alignedReference: aligned ? referenceToSend : null,
+    // Candidates the verification pass discarded, so a missed defect can be
+    // attributed to the right stage rather than guessed at.
+    rejected,
     budget: budgetStatus()
   };
 }
@@ -569,7 +626,13 @@ http.createServer(async (req, res) => {
       return send(res, 429, { error: 'Too many analyses in a short time — wait a minute and try again.' });
     }
     try { const { image, referenceImage } = await readBody(req); return send(res, 200, await analyse(image, referenceImage)); }
-    catch (error) { return send(res, 400, { error: error.message }); }
+    catch (error) {
+      send(res, error.statusCode || 400, { error: error.message });
+      // An over-sized upload was paused rather than read to completion —
+      // close it now that the client has its answer.
+      if (!req.readableEnded) req.destroy();
+      return;
+    }
   }
   const file = req.url === '/' ? '/index.html' : req.url.split('?')[0];
   if (!STATIC_FILES.has(file)) return send(res, 404, 'Not found', 'text/plain');
