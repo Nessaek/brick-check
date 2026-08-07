@@ -194,9 +194,24 @@ Runtime environment variables:
 | `ANTHROPIC_API_KEY` | Required. Never bake it into the image. |
 | `APP_PASSWORD` | Shared password (HTTP Basic). Unset means **no authentication at all** — every visitor can spend your API credit. |
 | `TRUST_PROXY` | Set to `1` only when a load balancer sets `X-Forwarded-For`. The Dockerfile defaults it on; unset it if the container is exposed directly, or the rate limit becomes trivially spoofable. |
+| `MONTHLY_BUDGET_GBP` / `MONTHLY_BUDGET_USD` / `GBP_USD` | Monthly spend cap, defaulting to £5. See [Capping what it can cost](#capping-what-it-can-cost). |
+| `HOST` | Bind address (default `0.0.0.0`). Set `127.0.0.1` to keep it off the local network. |
 | `PORT`, `CLAUDE_MODEL` | Optional. |
 
-Before exposing it to anyone else: set `APP_PASSWORD`, set a spend cap in the Anthropic console (the real backstop — each analysis costs one to two Claude vision calls), and raise your proxy's request timeout above 60 seconds. Note the rate limiter is in-memory, so it resets on every restart and is per-instance.
+Before exposing it to anyone else: set `APP_PASSWORD`, set a spend cap in the Anthropic console (see below), and raise your proxy's request timeout above 60 seconds. Note the rate limiter is in-memory, so it resets on every restart and is per-instance.
+
+### Capping what it can cost
+
+Rate limiting caps how *fast* requests arrive, not how much they add up to — a slow trickle can still run up a bill. So the server meters the token usage the API reports on every call, accumulates it per calendar month in `usage.json`, and refuses new analyses once the month's total reaches the cap. Refusing is free: no API call is made, and the user is told the budget is exhausted rather than seeing a generic failure. The UI also warns once less than 20% of the month remains.
+
+The default cap is **£5/month**. Configure it with `MONTHLY_BUDGET_GBP` (converted via `GBP_USD`) or `MONTHLY_BUDGET_USD`. The active cap and month-to-date spend are printed at startup.
+
+A measured analysis of a mosaic with a reference photo cost **$0.021** — two Claude calls, the first pass plus the zoomed verification. At that rate £5 (~$6.50) is roughly **300 analyses a month**. Two things move that number: an analysis with no reference photo is cheaper (one image, no diff crops), and Sonnet 5's introductory pricing ends 2026-08-31, after which the same analysis costs about 50% more (~200 analyses per £5). The `PRICING` table in `server.js` carries both rates and switches itself over on that date.
+
+Two caveats worth knowing:
+
+- **This is an estimate, not a bill.** It should track your real usage closely because it meters what the API reports, but treat the Anthropic console's own spend limit as the authoritative backstop — set one there too. If a model has no entry in the `PRICING` table, metering silently cannot work; the server says so loudly at startup rather than pretending the cap is active.
+- **The counter is a local file.** It resets if you deploy to fresh storage, and it is per-instance — two containers keep two separate counters.
 
 ### Personal setup (no hosting)
 

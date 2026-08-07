@@ -33,6 +33,71 @@ const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-5';
 // instead of an opaque API failure.
 const SUPPORTED_MEDIA_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
+// ---- Monthly spend cap ---------------------------------------------------
+// Rate limiting caps burst rate, not total spend — a slow trickle of requests
+// can still run up a bill. This meters the token usage the API actually
+// reports on every call and refuses new analyses once the month's estimate
+// reaches the cap. Anthropic bills in USD; set the cap in pounds with
+// MONTHLY_BUDGET_GBP (GBP_USD converts it) or directly with MONTHLY_BUDGET_USD.
+const USAGE_FILE = path.join(root, 'usage.json');
+const GBP_USD = Number(process.env.GBP_USD) || 1.30;
+const MONTHLY_BUDGET_USD = Number(process.env.MONTHLY_BUDGET_USD)
+  || (Number(process.env.MONTHLY_BUDGET_GBP) || 5) * GBP_USD;
+
+// USD per million tokens, from Anthropic's published pricing. Cache reads
+// bill at 0.1x the input rate and cache writes at 1.25x.
+const PRICING = {
+  'claude-sonnet-5': { input: 3, output: 15, intro: { until: '2026-08-31', input: 2, output: 10 } },
+  'claude-opus-5': { input: 5, output: 25 },
+  'claude-haiku-4-5-20251001': { input: 1, output: 5 }
+};
+
+function rates(model) {
+  const price = PRICING[model];
+  if (!price) return null;
+  const today = new Date().toISOString().slice(0, 10);
+  return price.intro && today <= price.intro.until ? price.intro : price;
+}
+
+function costOf(usage) {
+  const rate = rates(CLAUDE_MODEL);
+  if (!rate || !usage) return 0;
+  const perToken = rate.input / 1e6;
+  return (usage.input_tokens || 0) * perToken
+    + (usage.cache_creation_input_tokens || 0) * perToken * 1.25
+    + (usage.cache_read_input_tokens || 0) * perToken * 0.1
+    + (usage.output_tokens || 0) * (rate.output / 1e6);
+}
+
+function readUsageLog() {
+  try { return JSON.parse(fs.readFileSync(USAGE_FILE, 'utf8')); } catch { return {}; }
+}
+function currentMonth() { return new Date().toISOString().slice(0, 7); }
+function spentThisMonth() { return readUsageLog()[currentMonth()]?.usd || 0; }
+
+// Recorded after every Claude call, including the ones that fail downstream —
+// tokens spent are billed whether or not we liked the answer.
+function recordSpend(usd) {
+  if (!usd) return;
+  const log = readUsageLog();
+  const month = currentMonth();
+  const entry = log[month] || { usd: 0, calls: 0 };
+  entry.usd = Number((entry.usd + usd).toFixed(6));
+  entry.calls += 1;
+  log[month] = entry;
+  try { fs.writeFileSync(USAGE_FILE, JSON.stringify(log, null, 2)); }
+  catch (error) { console.error('Could not record API spend — the cap may undercount:', error.message); }
+}
+
+function budgetStatus() {
+  const spent = spentThisMonth();
+  return {
+    spentUsd: Number(spent.toFixed(4)),
+    capUsd: Number(MONTHLY_BUDGET_USD.toFixed(2)),
+    remainingUsd: Number(Math.max(0, MONTHLY_BUDGET_USD - spent).toFixed(4))
+  };
+}
+
 // Simple per-IP rate limit on /api/analyze — each request costs real money
 // (a Claude vision call), so cap bursts even for personal use.
 const RATE_LIMIT = { windowMs: 60_000, max: 8 };
@@ -387,6 +452,9 @@ async function callClaude(content, forceTool, tool = REPORT_ISSUES_TOOL) {
   });
 
   const payload = await response.json();
+  // Meter before the error check: a request that reached the model is billed
+  // even when we end up rejecting the response.
+  recordSpend(costOf(payload.usage));
   if (!response.ok) {
     throw new Error(payload.error?.message || 'The vision service could not analyse this photo.');
   }
@@ -397,6 +465,9 @@ async function analyse(image, referenceImage) {
   if (!image) throw new Error('Please upload a photo of your build first.');
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new Error('Anthropic API key not configured. Copy .env.example to .env, add ANTHROPIC_API_KEY, then restart the server.');
+  }
+  if (spentThisMonth() >= MONTHLY_BUDGET_USD) {
+    throw new Error(`This month's analysis budget is used up, so no more photos can be checked until it resets on the 1st.`);
   }
 
   let aligned = false;
@@ -483,7 +554,8 @@ async function analyse(image, referenceImage) {
     // When alignment succeeded, the warped reference shares the build photo's
     // coordinate system — the client uses it to crop matching "yours vs
     // target" regions around each issue.
-    alignedReference: aligned ? referenceToSend : null
+    alignedReference: aligned ? referenceToSend : null,
+    budget: budgetStatus()
   };
 }
 
@@ -518,4 +590,8 @@ http.createServer(async (req, res) => {
   console.log(APP_PASSWORD
     ? 'Password protection enabled (APP_PASSWORD).'
     : 'No APP_PASSWORD set — anyone who can reach this server can spend your API credit. Set one before exposing it beyond localhost.');
+  const status = budgetStatus();
+  console.log(rates(CLAUDE_MODEL)
+    ? `Monthly spend cap $${status.capUsd} (~£${(status.capUsd / GBP_USD).toFixed(2)}). Used so far this month: $${status.spentUsd}.`
+    : `Spend cap INACTIVE — no pricing known for ${CLAUDE_MODEL}, so usage cannot be metered. Add it to the PRICING table in server.js.`);
 });

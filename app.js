@@ -158,6 +158,7 @@ analyze.addEventListener('click', async () => {
     if (!response.ok) throw new Error(data.error || 'Analysis failed.');
     alignedReference = data.alignedReference || '';
     renderIssues(data.issues, data.mode, data.hasReference, data.aligned, data.alignReason, data.verified);
+    showBudgetNotice(data.budget);
   } catch (error) {
     renderIssues([], 'error');
     document.querySelector('.results-heading p').textContent = error.message;
@@ -279,6 +280,18 @@ function drawCrop(canvas, img, xPct, yPct, markSpot) {
     ctx.arc(cx, cy, 15 * dpr, 0, Math.PI * 2);
     ctx.stroke();
   }
+}
+
+// Warn only once the month's budget is nearly gone — a running cost readout
+// on every analysis would be noise, but being cut off with no warning is worse.
+function showBudgetNotice(budget) {
+  if (!budget || !budget.capUsd) return;
+  const heading = document.querySelector('.results-heading p');
+  const fractionLeft = budget.remainingUsd / budget.capUsd;
+  if (fractionLeft > 0.2) return;
+  heading.innerHTML += budget.remainingUsd > 0
+    ? ` <span class="align-note">About ${Math.round(fractionLeft * 100)}% of this month's analysis budget is left.</span>`
+    : ' <span class="align-note">This month\'s analysis budget is now used up — it resets on the 1st.</span>';
 }
 
 function severityClass(type = '') {

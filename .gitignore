@@ -7,3 +7,4 @@ local.env
 .idea/
 eval/images/
 __pycache__/
+usage.json
