@@ -1,0 +1,11 @@
+{
+  "description": "Synthetic framed brick mosaic (eval/make-mosaic-fixtures.py), reshot at a slightly different angle and exposure with one tile missing at the bottom right. This is the suite's only coverage of the alignment and cell-diff code paths, which need a detectable rectangular frame and so never engage on the photographed 3D builds.",
+  "defects": [
+    {
+      "x": 78,
+      "y": 78,
+      "label": "missing tile near the bottom-right, showing bare grey baseplate",
+      "types": ["MISSING PIECE", "WRONG PIECE"]
+    }
+  ]
+}

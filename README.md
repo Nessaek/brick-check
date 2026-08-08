@@ -100,7 +100,7 @@ or
 Image processing DISABLED (python3/opencv/scikit-image not found) — alignment, the coordinate grid and issue verification are all off, which markedly reduces accuracy.
 ```
 
-**On alignment specifically:** it needs a visible rectangular frame or border, so it helps framed mosaics and skips loose 3D builds. When it succeeds the results screen notes *"Reference photo auto-aligned and color-corrected for a fairer comparison"*, and the pixel-diff candidate pass (stage 2) becomes available. When it fails — no frame found, photos too dissimilar, tooling missing — the original photos are used and the reason is reported in `alignReason`. Try it with the pair in `test-images/`: a real LEGO mural photo with one digitally removed brick.
+**On alignment specifically:** it needs a visible rectangular frame or border, so it helps framed mosaics and skips loose 3D builds. When it succeeds the results screen notes *"Reference photo auto-aligned and color-corrected for a fairer comparison"*, and the pixel-diff candidate pass (stage 2) becomes available. When it fails — no frame found, photos too dissimilar, tooling missing — the original photos are used and the reason is reported in `alignReason`. The `mosaic-*` eval cases exercise this path; regenerate their fixtures with `preprocess/.venv/bin/python3 eval/make-mosaic-fixtures.py`.
 
 ## Project structure
 
@@ -117,9 +117,9 @@ brickcheck/
 │   └── requirements.txt      # Python dependencies
 ├── eval/
 │   ├── run.js                # Scores the live API against known ground truth
+│   ├── make-mosaic-fixtures.py  # Regenerates the synthetic mosaic fixtures
 │   ├── cases/<name>/         # build.jpg + reference.jpg + expected.json
 │   └── images/               # Scratch space for unsorted photos (git-ignored)
-├── test-images/              # Mural pair with one digitally removed brick
 ├── Dockerfile                # Node + Python image for container hosting
 ├── com.brickcheck.server.plist  # macOS LaunchAgent for the personal setup
 ├── .env.example              # Template for your ANTHROPIC_API_KEY
@@ -252,7 +252,7 @@ To add a case: photograph a build complete (that's `reference.jpg`), remove or s
 
 ### Where it currently stands
 
-Nine cases: a framed mosaic (real photo, one brick digitally removed), two LEGO Botanicals pot buddies, and a pink creature compared against its official product shot. Across five unchanged runs of the same configuration the suite has landed anywhere from **4/9 to 7/9 cases, 4–8 defects caught, and 2–3 false positives**. The most persistent failure is known: on a correct build photographed from two angles, parts that are simply out of frame get reported as missing.
+Nine cases: a synthetic framed mosaic (generated, so the suite carries no third-party image licensing), two LEGO Botanicals pot buddies, and a pink creature compared against its official product shot. Across five unchanged runs of the same configuration the suite has landed anywhere from **4/9 to 7/9 cases, 4–8 defects caught, and 2–3 false positives**. The most persistent failure is known: on a correct build photographed from two angles, parts that are simply out of frame get reported as missing.
 
 **That spread is the single most important thing to know before using this harness.** A single run tells you very little — a 4/9 and a 7/9 came from consecutive runs with identical code. Judge any change on the aggregate of at least two or three runs, and treat one case flipping as noise until it repeats.
 
