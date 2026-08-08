@@ -8,3 +8,6 @@ local.env
 eval/images/
 __pycache__/
 usage.json
+
+# Runtime artefacts — the LaunchAgent appends to this on every restart.
+*.log
