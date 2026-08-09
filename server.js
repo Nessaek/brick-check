@@ -326,7 +326,7 @@ function cropAt(imagePath, x, y, mark) {
 // against focused evidence is far more reliable than the open-ended search
 // of the first pass. Never throws — on any failure the first-pass issues
 // are returned unverified.
-async function verifyIssues(issues, image, referenceToSend, aligned, hasReference) {
+async function verifyIssues(issues, image, referenceToSend, aligned) {
   if (!issues.length || !alignmentAvailable) return { issues, verified: false, rejected: [] };
 
   let tmpDir;
@@ -337,7 +337,7 @@ async function verifyIssues(issues, image, referenceToSend, aligned, hasReferenc
     fs.writeFileSync(buildPath, Buffer.from(main.data, 'base64'));
     let refPath = null;
     let refImage = null;
-    if (hasReference && referenceToSend) {
+    if (referenceToSend) {
       refImage = parseDataUrl(referenceToSend);
       refPath = path.join(tmpDir, `ref${EXT_BY_MIME[refImage.mimeType] || '.img'}`);
       fs.writeFileSync(refPath, Buffer.from(refImage.data, 'base64'));
@@ -404,10 +404,8 @@ async function verifyIssues(issues, image, referenceToSend, aligned, hasReferenc
   }
 }
 
-function buildPrompt(hasReference) {
-  return hasReference
-    ? `You are an expert LEGO build reviewer. Image 1 is the user's current build. Image 2 is the correct reference or instruction step. Compare them carefully and list every visible difference: missing pieces, wrong pieces, wrong colors, wrong orientation, or pieces in the wrong place. ${VIEWPOINT_GUARD} Describe each fix using the actual colors, shapes, and locations you see in the photos. Only report issues you can clearly see. ${SCAN_INSTRUCTION} If the build matches the reference, call the tool with an empty issues array.`
-    : `You are an expert LEGO build reviewer. Image 1 is the user's current build. No reference image was provided, so inspect the build for obvious mistakes: missing pieces leaving gaps or exposed studs, pieces facing the wrong way, wrong colors for the section, unstable or floating parts, or incomplete sub-assemblies. Only report issues you can clearly see. Describe each fix using the actual colors, shapes, and locations visible in the photo. ${SCAN_INSTRUCTION} If nothing looks clearly wrong, call the tool with an empty issues array.`;
+function buildPrompt() {
+  return `You are an expert LEGO build reviewer. Image 1 is the user's current build. Image 2 is the correct reference or instruction step. Compare them carefully and list every visible difference: missing pieces, wrong pieces, wrong colors, wrong orientation, or pieces in the wrong place. ${VIEWPOINT_GUARD} Describe each fix using the actual colors, shapes, and locations you see in the photos. Only report issues you can clearly see. ${SCAN_INSTRUCTION} If the build matches the reference, call the tool with an empty issues array.`;
 }
 
 async function callClaude(content, forceTool, tool = REPORT_ISSUES_TOOL) {
@@ -436,6 +434,7 @@ async function callClaude(content, forceTool, tool = REPORT_ISSUES_TOOL) {
 
 async function analyse(image, referenceImage) {
   if (!image) throw new Error('Please upload a photo of your build first.');
+  if (!referenceImage) throw new Error('Please add a reference photo showing how the build should look.');
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new Error('Anthropic API key not configured. Copy .env.example to .env, add ANTHROPIC_API_KEY, then restart the server.');
   }
@@ -444,7 +443,7 @@ async function analyse(image, referenceImage) {
   let alignReason = null;
   let referenceToSend = referenceImage;
   let diffRegions = [];
-  if (referenceImage) {
+  {
     const alignment = await alignReferenceToBuild(image, referenceImage);
     if (alignment.success) {
       referenceToSend = `data:${alignment.mime};base64,${alignment.image_base64}`;
@@ -460,7 +459,7 @@ async function analyse(image, referenceImage) {
     }
   }
 
-  const content = [{ type: 'text', text: buildPrompt(Boolean(referenceImage)) }];
+  const content = [{ type: 'text', text: buildPrompt() }];
 
   const mainImage = parseDataUrl(image);
   if (!SUPPORTED_MEDIA_TYPES.has(mainImage.mimeType)) {
@@ -512,13 +511,12 @@ async function analyse(image, referenceImage) {
   if (!toolUse) throw new Error('The vision service returned an unexpected response.');
 
   const firstPass = normalizeIssues(toolUse.input?.issues);
-  const { issues, verified, rejected } = await verifyIssues(firstPass, image, referenceToSend, aligned, Boolean(referenceImage));
+  const { issues, verified, rejected } = await verifyIssues(firstPass, image, referenceToSend, aligned);
 
   return {
     issues,
     verified,
     mode: 'live',
-    hasReference: Boolean(referenceImage),
     aligned,
     alignReason,
     // When alignment succeeded, the warped reference shares the build photo's

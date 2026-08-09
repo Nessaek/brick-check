@@ -19,7 +19,7 @@
       <section class="hero">
         <div class="eyebrow"><span></span> BUILD REVIEW</div>
         <h1>Spot the wrong brick.<br /><em>Fix it with confidence.</em></h1>
-        <p>Upload a photo of your build and we’ll compare it with the instructions—then show exactly what to change.</p>
+        <p>Upload a photo of your build and a photo of how it should look. We’ll compare them and show exactly what to change.</p>
       </section>
 
       <section class="workspace" id="workspace">
@@ -38,14 +38,14 @@
         </div>
 
         <div class="input-panel reference-panel">
-          <div class="panel-heading"><div><span class="step">02</span><h2>What should it look like?</h2></div><span class="optional">OPTIONAL</span></div>
+          <div class="panel-heading"><div><span class="step">02</span><h2>What should it look like?</h2></div><span class="required">REQUIRED</span></div>
           <input id="reference-upload" type="file" accept="image/*" hidden />
           <input id="instruction-upload" type="file" accept="image/*" hidden />
           <div class="reference-card" id="reference-card">
             <div class="reference-image" aria-label="Example reference LEGO build">
               <i class="brick b1"></i><i class="brick b2"></i><i class="brick b3"></i><i class="brick b4"></i><i class="brick b5"></i><i class="brick b6"></i><i class="brick b7"></i><i class="brick b8"></i><i class="brick b9"></i><i class="brick b10"></i>
             </div>
-            <div><b id="reference-title">No reference selected</b><span id="reference-status">Add a photo of the finished model or an instruction page</span><button class="change-ref" id="change-ref">Choose reference →</button><button class="change-ref" id="remove-ref" hidden>Remove reference ×</button></div>
+            <div><b id="reference-title">No reference selected</b><span id="reference-status">Required &mdash; add a photo of the finished model or an instruction page</span><button class="change-ref" id="change-ref">Choose reference →</button><button class="change-ref" id="remove-ref" hidden>Remove reference ×</button></div>
           </div>
           <div class="or"><span>OR</span></div>
           <button class="instruction-button" id="upload-instructions"><span>▧</span><span><b>Upload instruction page</b><small>We’ll identify the step for you</small></span><span>+</span></button>

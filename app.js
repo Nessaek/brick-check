@@ -57,12 +57,16 @@ function setUploadStatus(message, isError = false) {
   uploadStatus.classList.toggle('hidden', !message);
 }
 
-function setAnalyzeReady(ready) {
+// Both photos are required: the whole method is a comparison, and without a
+// reference there is nothing to compare against.
+function refreshAnalyzeState() {
+  const ready = Boolean(uploadedImage && referenceImage);
   analyze.disabled = !ready;
   analyze.setAttribute('aria-disabled', ready ? 'false' : 'true');
+  analyze.title = ready ? '' : 'Add both your build photo and a reference photo first';
 }
 
-setAnalyzeReady(false);
+refreshAnalyzeState();
 if (location.protocol === 'file:') {
   setUploadStatus('Open http://localhost:3000 after running npm start — opening index.html directly will not work.', true);
 }
@@ -73,7 +77,7 @@ async function showImage(file) {
     return;
   }
   setUploadStatus('Loading photo…');
-  setAnalyzeReady(false);
+  refreshAnalyzeState();
   try {
     uploadedImage = await fileToUploadDataURL(file);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -86,7 +90,7 @@ async function showImage(file) {
     preview.onload = () => setUploadStatus('');
     previewWrap.classList.remove('hidden');
     dropZone.classList.add('hidden');
-    setAnalyzeReady(true);
+    refreshAnalyzeState();
   } catch (error) {
     uploadedImage = '';
     setUploadStatus(error.message, true);
@@ -107,7 +111,7 @@ remove.addEventListener('click', () => {
   upload.value = '';
   previewWrap.classList.add('hidden');
   dropZone.classList.remove('hidden');
-  setAnalyzeReady(false);
+  refreshAnalyzeState();
   setUploadStatus('');
 });
 
@@ -125,6 +129,7 @@ async function setReference(file, label) {
   document.querySelector('#reference-title').textContent = label;
   document.querySelector('#reference-status').textContent = 'Ready to compare with your build';
   document.querySelector('#remove-ref').hidden = false;
+  refreshAnalyzeState();
 }
 function clearReference() {
   referenceImage = '';
@@ -135,6 +140,7 @@ function clearReference() {
   document.querySelector('#reference-title').textContent = referenceDefaults.title;
   document.querySelector('#reference-status').textContent = referenceDefaults.status;
   document.querySelector('#remove-ref').hidden = true;
+  refreshAnalyzeState();
 }
 document.querySelector('#change-ref').addEventListener('click', () => referenceUpload.click());
 document.querySelector('#remove-ref').addEventListener('click', clearReference);
@@ -147,6 +153,10 @@ analyze.addEventListener('click', async () => {
     setUploadStatus('Upload a photo of your build before analyzing.', true);
     return;
   }
+  if (!referenceImage) {
+    setUploadStatus('Add a reference photo showing how the build should look.', true);
+    return;
+  }
   if (location.protocol === 'file:') {
     setUploadStatus('Start the app with npm start and open http://localhost:3000.', true);
     return;
@@ -157,7 +167,7 @@ analyze.addEventListener('click', async () => {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Analysis failed.');
     alignedReference = data.alignedReference || '';
-    renderIssues(data.issues, data.mode, data.hasReference, data.aligned, data.alignReason, data.verified);
+    renderIssues(data.issues, data.mode, data.aligned, data.alignReason, data.verified);
   } catch (error) {
     renderIssues([], 'error');
     document.querySelector('.results-heading p').textContent = error.message;
@@ -168,16 +178,14 @@ analyze.addEventListener('click', async () => {
   }
 });
 
-function renderIssues(issues, mode, hasReference = Boolean(referenceImage), aligned = false, alignReason = null, verified = false) {
+function renderIssues(issues, mode, aligned = false, alignReason = null, verified = false) {
   const heading = document.querySelector('.results-heading p');
   const list = document.querySelector('.issues');
   const mapImage = document.querySelector('#map-image');
   const mapCount = document.querySelector('.map-top span');
 
   if (mode === 'live' && !issues.length) {
-    heading.textContent = hasReference
-      ? 'Your build matches the reference — no differences found.'
-      : 'No obvious mistakes were found. Upload an instruction page reference for a sharper comparison.';
+    heading.textContent = 'Your build matches the reference — no differences found.';
   } else if (issues.length) {
     heading.innerHTML = `We found <b>${issues.length} issue${issues.length === 1 ? '' : 's'}</b> in your build photo.`;
   } else {
@@ -186,7 +194,7 @@ function renderIssues(issues, mode, hasReference = Boolean(referenceImage), alig
 
   if (aligned) {
     heading.innerHTML += ' <span class="align-note">Reference photo auto-aligned and color-corrected for a fairer comparison.</span>';
-  } else if (hasReference && alignReason) {
+  } else if (alignReason) {
     heading.innerHTML += ` <span class="align-note">${escapeHtml(alignReason)}</span>`;
   }
   if (verified && issues.length) {
@@ -198,7 +206,7 @@ function renderIssues(issues, mode, hasReference = Boolean(referenceImage), alig
     ? `<img class="map-photo" src="${uploadedImage}" alt="Your uploaded LEGO build">${issues.map((issue, index) => `<button class="pin ${index === 0 ? 'active-pin' : ''}" data-pin="${issue.number}" style="left:${issue.x}%;top:${issue.y}%">${issue.number}</button>`).join('')}`
     : '';
 
-  const refUrl = hasReference ? (alignedReference || referenceImage) : '';
+  const refUrl = alignedReference || referenceImage;
   // A same-coordinates crop of the reference only lines up with the build
   // when the reference was aligned onto it. Otherwise the crop would land on
   // whatever happens to be at those coordinates in a differently-framed
