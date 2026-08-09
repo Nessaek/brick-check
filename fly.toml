@@ -1,0 +1,42 @@
+# Fly.io deployment config.
+#
+# Secrets are NOT set here — they go in with `fly secrets set` so they never
+# enter the repo or the image. See the deploy steps in README.md.
+#
+# `fly launch` may rewrite parts of this file to match your account and the
+# current schema; let it, then re-check that the [mounts] and [env] blocks
+# below survived, since those are what keep the spend cap working.
+
+app = "brickcheck"
+primary_region = "lhr"          # London — change to your nearest region
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # The spend counter must live on the mounted volume. Without this it sits in
+  # the container filesystem and resets on every deploy, quietly turning the
+  # monthly cap into "since the last restart".
+  USAGE_FILE = "/data/usage.json"
+  # Fly terminates TLS and forwards the real client address, so the rate
+  # limiter should read X-Forwarded-For rather than the proxy's own address.
+  TRUST_PROXY = "1"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  # Scale to zero when idle — a personal app costs close to nothing between
+  # uses. The first request after idling pays a cold start of a few seconds.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[mounts]
+  source = "brickcheck_data"
+  destination = "/data"
+
+[[vm]]
+  # OpenCV plus two decoded photos needs headroom; 512MB is not enough.
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1

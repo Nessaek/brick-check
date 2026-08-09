@@ -29,7 +29,8 @@ COPY preprocess/align.py preprocess/grid.py preprocess/crop.py preprocess/
 # container is exposed directly — unset it in that case.
 ENV PORT=3000 \
     TRUST_PROXY=1 \
-    NODE_ENV=production
+    NODE_ENV=production \
+    USAGE_FILE=/data/usage.json
 
 # Provide these at runtime, never in the image:
 #   ANTHROPIC_API_KEY  required

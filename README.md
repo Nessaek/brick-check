@@ -227,6 +227,36 @@ Two caveats worth knowing:
 - **This is an estimate, not a bill.** It should track your real usage closely because it meters what the API reports, but treat the Anthropic console's own spend limit as the authoritative backstop — set one there too. If a model has no entry in the `PRICING` table, metering silently cannot work; the server says so loudly at startup rather than pretending the cap is active.
 - **The counter is a local file.** Set `USAGE_FILE` to a path on a mounted volume when deploying, or every deploy and restart resets it and the cap becomes "£5 since the last restart". It is also per-instance, so two containers keep two separate counters. The active path is printed at startup.
 
+### Deploying to Fly.io
+
+`fly.toml` is included and already declares the volume, the `/data` counter path and `TRUST_PROXY`. Secrets are set separately so they never enter the repo or the image.
+
+```bash
+fly launch --no-deploy
+```
+
+```bash
+fly volumes create brickcheck_data --size 1 --region lhr
+```
+
+```bash
+fly secrets set ANTHROPIC_API_KEY=sk-ant-... APP_PASSWORD=choose-a-strong-one
+```
+
+```bash
+fly deploy
+```
+
+Then read the logs — this is the check worth not skipping:
+
+```bash
+fly logs
+```
+
+You want to see `Image processing enabled`, `Password protection enabled`, a `Spend counter: /data/usage.json` line, and **no** `SPEND CAP INOPERATIVE` banner. If the region in `fly.toml` differs from the volume's region the machine will not start, because a volume is pinned to one region.
+
+Railway and Render need no config file — connect the repo, let them build the `Dockerfile`, then add a volume mounted at `/data` and set `ANTHROPIC_API_KEY` and `APP_PASSWORD` in their dashboard. `USAGE_FILE` and `TRUST_PROXY` are already baked into the image.
+
 ### Personal setup (no hosting)
 
 If it is only ever for you, do not deploy it at all — run it on your own machine and reach it from your phone over Tailscale. Nothing is exposed to the internet, the API key never leaves the machine, and there is no bill.
