@@ -39,7 +39,10 @@ const SUPPORTED_MEDIA_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', '
 // reports on every call and refuses new analyses once the month's estimate
 // reaches the cap. Anthropic bills in USD; set the cap in pounds with
 // MONTHLY_BUDGET_GBP (GBP_USD converts it) or directly with MONTHLY_BUDGET_USD.
-const USAGE_FILE = path.join(root, 'usage.json');
+// Deployed, this belongs on a mounted volume: container filesystems are wiped
+// on every deploy and restart, and a spend counter that resets is not a cap.
+// Defaults to the project directory, which is right for running locally.
+const USAGE_FILE = process.env.USAGE_FILE || path.join(root, 'usage.json');
 
 // `Number(x) || fallback` would quietly turn a deliberate budget of 0 —
 // "allow no spending at all" — back into the default, so parse explicitly.
@@ -654,6 +657,9 @@ http.createServer(async (req, res) => {
     ? 'Password protection enabled (APP_PASSWORD).'
     : 'No APP_PASSWORD set — anyone who can reach this server can spend your API credit. Set one before exposing it beyond localhost.');
   const status = budgetStatus();
+  // A cap that silently resets is worse than no cap, so say where the counter
+  // lives — on a container this must be a mounted volume, not the image.
+  console.log(`Spend counter: ${USAGE_FILE}`);
   console.log(rates(CLAUDE_MODEL)
     ? `Monthly spend cap $${status.capUsd} (~£${(status.capUsd / GBP_USD).toFixed(2)}). Used so far this month: $${status.spentUsd}.`
     : `Spend cap INACTIVE — no pricing known for ${CLAUDE_MODEL}, so usage cannot be metered. Add it to the PRICING table in server.js.`);

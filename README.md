@@ -195,6 +195,7 @@ Runtime environment variables:
 | `APP_PASSWORD` | Shared password (HTTP Basic). Unset means **no authentication at all** — every visitor can spend your API credit. |
 | `TRUST_PROXY` | Set to `1` only when a load balancer sets `X-Forwarded-For`. The Dockerfile defaults it on; unset it if the container is exposed directly, or the rate limit becomes trivially spoofable. |
 | `MONTHLY_BUDGET_GBP` / `MONTHLY_BUDGET_USD` / `GBP_USD` | Monthly spend cap, defaulting to £5. See [Capping what it can cost](#capping-what-it-can-cost). |
+| `USAGE_FILE` | Where the spend counter is stored. **On a container, point this at a mounted volume** — otherwise it is wiped on every deploy and the cap silently resets. |
 | `HOST` | Bind address (default `0.0.0.0`). Set `127.0.0.1` to keep it off the local network. |
 | `PORT`, `CLAUDE_MODEL` | Optional. |
 
@@ -211,7 +212,7 @@ A measured analysis of a mosaic with a reference photo cost **$0.021** — two C
 Two caveats worth knowing:
 
 - **This is an estimate, not a bill.** It should track your real usage closely because it meters what the API reports, but treat the Anthropic console's own spend limit as the authoritative backstop — set one there too. If a model has no entry in the `PRICING` table, metering silently cannot work; the server says so loudly at startup rather than pretending the cap is active.
-- **The counter is a local file.** It resets if you deploy to fresh storage, and it is per-instance — two containers keep two separate counters.
+- **The counter is a local file.** Set `USAGE_FILE` to a path on a mounted volume when deploying, or every deploy and restart resets it and the cap becomes "£5 since the last restart". It is also per-instance, so two containers keep two separate counters. The active path is printed at startup.
 
 ### Personal setup (no hosting)
 
