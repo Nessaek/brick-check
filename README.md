@@ -181,24 +181,26 @@ Under the hood, the server sends both images to Claude in a single message with 
 
 The one thing to get right: **Python and OpenCV are not optional in practice.** Photo alignment, the coordinate grid that makes issue pins accurate, and the zoomed second-pass verification that filters false positives are all gated on them. Deploy somewhere without Python and the app still starts and still answers — just measurably worse. The startup log tells you which mode you are in, so read it after the first deploy.
 
-That rules out plain serverless functions, which also can't hold the 15–45 second analysis request open on default plans. Use a container host (Fly.io, Railway, Render) or a small VPS. The included `Dockerfile` builds Node plus the Python stack:
+That rules out plain serverless functions that cannot run the Python stack. Use a container host or a small VM. The app holds **no state**, so no volume or database is needed.
 
 ```bash
 docker build -t brickcheck .
 ```
 
 ```bash
-docker run -p 3000:3000 -v brickcheck-data:/data -e USAGE_FILE=/data/usage.json -e ANTHROPIC_API_KEY=sk-ant-... -e APP_PASSWORD=choose-one brickcheck
+docker run -p 3000:3000 -e ANTHROPIC_API_KEY=sk-ant-... -e APP_PASSWORD=choose-one brickcheck
 ```
 
-The image has been built and run for `linux/amd64` (what the hosts use) and verified end to end: OpenCV 5.0 works inside it, `align.py`, `grid.py` and `crop.py` all run, the password gate returns 401/200 correctly, and a counter written to the volume survives complete container replacement.
+The image has been built and run for `linux/amd64` and verified end to end: OpenCV 5.0 works inside it, `align.py`, `grid.py` and `crop.py` all execute, and the password gate returns 401 without credentials and 200 with.
 
-**The volume matters more than it looks.** Without `USAGE_FILE` on a mounted volume the counter lives in the container and resets on every deploy, so the cap becomes "£5 since the last restart". And if the volume is mounted root-owned while the process is not root — the default for a bare `docker volume` before this Dockerfile fixed it — the counter cannot be written at all and the cap never increments. The server checks this at startup and says so unmistakably:
+Read the startup log after the first deploy — this is the check worth not skipping:
 
 ```
-*** SPEND CAP INOPERATIVE ***
-Cannot write /data/usage.json, so usage cannot be recorded and the cap will never trigger.
+Image processing enabled — photo alignment, coordinate grid and zoomed issue verification are all active.
+Password protection enabled (APP_PASSWORD).
 ```
+
+`Image processing DISABLED` means the Python layer did not build, and the app will keep answering at roughly its original accuracy while looking healthy.
 
 Runtime environment variables:
 
@@ -207,55 +209,14 @@ Runtime environment variables:
 | `ANTHROPIC_API_KEY` | Required. Never bake it into the image. |
 | `APP_PASSWORD` | Shared password (HTTP Basic). Unset means **no authentication at all** — every visitor can spend your API credit. |
 | `TRUST_PROXY` | Set to `1` only when a load balancer sets `X-Forwarded-For`. The Dockerfile defaults it on; unset it if the container is exposed directly, or the rate limit becomes trivially spoofable. |
-| `MONTHLY_BUDGET_GBP` / `MONTHLY_BUDGET_USD` / `GBP_USD` | Monthly spend cap, defaulting to £5. See [Capping what it can cost](#capping-what-it-can-cost). |
-| `USAGE_FILE` | Where the spend counter is stored. **On a container, point this at a mounted volume** (e.g. `/data/usage.json`) — otherwise it is wiped on every deploy and the cap silently resets. |
 | `HOST` | Bind address (default `0.0.0.0`). Set `127.0.0.1` to keep it off the local network. |
 | `PORT`, `CLAUDE_MODEL` | Optional. |
 
-Before exposing it to anyone else: set `APP_PASSWORD`, set a spend cap in the Anthropic console (see below), and raise your proxy's request timeout above 60 seconds. Note the rate limiter is in-memory, so it resets on every restart and is per-instance.
+**On cost:** the app does not meter or cap spend. Set a spend limit on your Anthropic account — that is authoritative and cannot be exceeded by a bug here. For scale, one measured analysis of a mosaic with a reference photo cost about **$0.02**, across two Claude calls (the first pass plus the zoomed verification).
 
-### Capping what it can cost
+Before exposing it to anyone else: set `APP_PASSWORD`, set that account spend limit, and raise your proxy's request timeout above 60 seconds. The rate limiter is in-memory, so it resets on restart and is per-instance.
 
-Rate limiting caps how *fast* requests arrive, not how much they add up to — a slow trickle can still run up a bill. So the server meters the token usage the API reports on every call, accumulates it per calendar month in `usage.json`, and refuses new analyses once the month's total reaches the cap. Refusing is free: no API call is made, and the user is told the budget is exhausted rather than seeing a generic failure. The UI also warns once less than 20% of the month remains.
-
-The default cap is **£5/month**. Configure it with `MONTHLY_BUDGET_GBP` (converted via `GBP_USD`) or `MONTHLY_BUDGET_USD`. The active cap and month-to-date spend are printed at startup.
-
-A measured analysis of a mosaic with a reference photo cost **$0.021** — two Claude calls, the first pass plus the zoomed verification. At that rate £5 (~$6.50) is roughly **300 analyses a month**. Two things move that number: an analysis with no reference photo is cheaper (one image, no diff crops), and Sonnet 5's introductory pricing ends 2026-08-31, after which the same analysis costs about 50% more (~200 analyses per £5). The `PRICING` table in `server.js` carries both rates and switches itself over on that date.
-
-Two caveats worth knowing:
-
-- **This is an estimate, not a bill.** It should track your real usage closely because it meters what the API reports, but treat the Anthropic console's own spend limit as the authoritative backstop — set one there too. If a model has no entry in the `PRICING` table, metering silently cannot work; the server says so loudly at startup rather than pretending the cap is active.
-- **The counter is a local file.** Set `USAGE_FILE` to a path on a mounted volume when deploying, or every deploy and restart resets it and the cap becomes "£5 since the last restart". It is also per-instance, so two containers keep two separate counters. The active path is printed at startup.
-
-### Deploying to Fly.io
-
-`fly.toml` is included and already declares the volume, the `/data` counter path and `TRUST_PROXY`. Secrets are set separately so they never enter the repo or the image.
-
-```bash
-fly launch --no-deploy
-```
-
-```bash
-fly volumes create brickcheck_data --size 1 --region lhr
-```
-
-```bash
-fly secrets set ANTHROPIC_API_KEY=sk-ant-... APP_PASSWORD=choose-a-strong-one
-```
-
-```bash
-fly deploy
-```
-
-Then read the logs — this is the check worth not skipping:
-
-```bash
-fly logs
-```
-
-You want to see `Image processing enabled`, `Password protection enabled`, a `Spend counter: /data/usage.json` line, and **no** `SPEND CAP INOPERATIVE` banner. If the region in `fly.toml` differs from the volume's region the machine will not start, because a volume is pinned to one region.
-
-Railway and Render need no config file — connect the repo, let them build the `Dockerfile`, then add a volume mounted at `/data` and set `ANTHROPIC_API_KEY` and `APP_PASSWORD` in their dashboard. `USAGE_FILE` and `TRUST_PROXY` are already baked into the image.
+A worked AWS deployment is in [`deploy/aws-ec2.md`](deploy/aws-ec2.md).
 
 ### Personal setup (no hosting)
 

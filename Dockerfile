@@ -29,20 +29,16 @@ COPY preprocess/align.py preprocess/grid.py preprocess/crop.py preprocess/
 # container is exposed directly — unset it in that case.
 ENV PORT=3000 \
     TRUST_PROXY=1 \
-    NODE_ENV=production \
-    USAGE_FILE=/data/usage.json
+    NODE_ENV=production
 
 # Provide these at runtime, never in the image:
 #   ANTHROPIC_API_KEY  required
 #   APP_PASSWORD       shared password; without it the app is open to anyone
 #   CLAUDE_MODEL       optional, defaults to claude-sonnet-5
-
-# Create the volume mount point owned by the runtime user. Docker seeds a new
-# named volume from the image's directory, so this carries the ownership over;
-# without it the mount is root-owned, the unprivileged process cannot write the
-# spend counter, and the budget cap silently never increments.
-RUN mkdir -p /data && chown node:node /data
-VOLUME ["/data"]
+#
+# The app holds no state, so no volume is needed. Spend is capped by the
+# limit set on the Anthropic account, which is authoritative and cannot be
+# defeated by a bug here.
 
 EXPOSE 3000
 USER node
