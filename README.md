@@ -184,7 +184,20 @@ The one thing to get right: **Python and OpenCV are not optional in practice.** 
 That rules out plain serverless functions, which also can't hold the 15–45 second analysis request open on default plans. Use a container host (Fly.io, Railway, Render) or a small VPS. The included `Dockerfile` builds Node plus the Python stack:
 
 ```bash
-docker build -t brickcheck . && docker run -p 3000:3000 -e ANTHROPIC_API_KEY=sk-ant-... -e APP_PASSWORD=choose-one brickcheck
+docker build -t brickcheck .
+```
+
+```bash
+docker run -p 3000:3000 -v brickcheck-data:/data -e USAGE_FILE=/data/usage.json -e ANTHROPIC_API_KEY=sk-ant-... -e APP_PASSWORD=choose-one brickcheck
+```
+
+The image has been built and run for `linux/amd64` (what the hosts use) and verified end to end: OpenCV 5.0 works inside it, `align.py`, `grid.py` and `crop.py` all run, the password gate returns 401/200 correctly, and a counter written to the volume survives complete container replacement.
+
+**The volume matters more than it looks.** Without `USAGE_FILE` on a mounted volume the counter lives in the container and resets on every deploy, so the cap becomes "£5 since the last restart". And if the volume is mounted root-owned while the process is not root — the default for a bare `docker volume` before this Dockerfile fixed it — the counter cannot be written at all and the cap never increments. The server checks this at startup and says so unmistakably:
+
+```
+*** SPEND CAP INOPERATIVE ***
+Cannot write /data/usage.json, so usage cannot be recorded and the cap will never trigger.
 ```
 
 Runtime environment variables:
@@ -195,7 +208,7 @@ Runtime environment variables:
 | `APP_PASSWORD` | Shared password (HTTP Basic). Unset means **no authentication at all** — every visitor can spend your API credit. |
 | `TRUST_PROXY` | Set to `1` only when a load balancer sets `X-Forwarded-For`. The Dockerfile defaults it on; unset it if the container is exposed directly, or the rate limit becomes trivially spoofable. |
 | `MONTHLY_BUDGET_GBP` / `MONTHLY_BUDGET_USD` / `GBP_USD` | Monthly spend cap, defaulting to £5. See [Capping what it can cost](#capping-what-it-can-cost). |
-| `USAGE_FILE` | Where the spend counter is stored. **On a container, point this at a mounted volume** — otherwise it is wiped on every deploy and the cap silently resets. |
+| `USAGE_FILE` | Where the spend counter is stored. **On a container, point this at a mounted volume** (e.g. `/data/usage.json`) — otherwise it is wiped on every deploy and the cap silently resets. |
 | `HOST` | Bind address (default `0.0.0.0`). Set `127.0.0.1` to keep it off the local network. |
 | `PORT`, `CLAUDE_MODEL` | Optional. |
 

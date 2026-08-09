@@ -105,6 +105,18 @@ function recordSpend(usd) {
   catch (error) { console.error('Could not record API spend — the cap may undercount:', error.message); }
 }
 
+// Probes the counter path rather than trusting it: the directory can exist and
+// still be unwritable, which is the normal case for a freshly mounted volume.
+function counterWritable() {
+  try {
+    fs.mkdirSync(path.dirname(USAGE_FILE), { recursive: true });
+    fs.appendFileSync(USAGE_FILE, '');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function budgetStatus() {
   const spent = spentThisMonth();
   return {
@@ -660,6 +672,15 @@ http.createServer(async (req, res) => {
   // A cap that silently resets is worse than no cap, so say where the counter
   // lives — on a container this must be a mounted volume, not the image.
   console.log(`Spend counter: ${USAGE_FILE}`);
+  // An unwritable counter does not fail loudly on its own: recordSpend catches
+  // the error per call, so the cap would simply never increment and spending
+  // would be unbounded. Check once, up front, and say so unmistakably. The
+  // usual cause is a volume mounted root-owned while the process is not root.
+  if (!counterWritable()) {
+    console.error('*** SPEND CAP INOPERATIVE ***');
+    console.error(`Cannot write ${USAGE_FILE}, so usage cannot be recorded and the cap will never trigger.`);
+    console.error('If this is a mounted volume, it is probably owned by root while this process is not.');
+  }
   console.log(rates(CLAUDE_MODEL)
     ? `Monthly spend cap $${status.capUsd} (~£${(status.capUsd / GBP_USD).toFixed(2)}). Used so far this month: $${status.spentUsd}.`
     : `Spend cap INACTIVE — no pricing known for ${CLAUDE_MODEL}, so usage cannot be metered. Add it to the PRICING table in server.js.`);

@@ -36,6 +36,13 @@ ENV PORT=3000 \
 #   APP_PASSWORD       shared password; without it the app is open to anyone
 #   CLAUDE_MODEL       optional, defaults to claude-sonnet-5
 
+# Create the volume mount point owned by the runtime user. Docker seeds a new
+# named volume from the image's directory, so this carries the ownership over;
+# without it the mount is root-owned, the unprivileged process cannot write the
+# spend counter, and the budget cap silently never increments.
+RUN mkdir -p /data && chown node:node /data
+VOLUME ["/data"]
+
 EXPOSE 3000
 USER node
 CMD ["node", "server.js"]
