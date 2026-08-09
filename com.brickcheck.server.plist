@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Template. Replace both /ABSOLUTE/PATH/TO placeholders with real paths
+     (launchd does not expand ~ or $HOME), copy to ~/Library/LaunchAgents/,
+     then: launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.brickcheck.server.plist
+     Find your node with: which node -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -7,12 +11,12 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/Apple/.nvm/versions/node/v26.3.0/bin/node</string>
-        <string>/Users/Apple/Code/brick-check/server.js</string>
+        <string>/ABSOLUTE/PATH/TO/node</string>
+        <string>/ABSOLUTE/PATH/TO/brick-check/server.js</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/Apple/Code/brick-check</string>
+    <string>/ABSOLUTE/PATH/TO/brick-check</string>
 
     <!-- ANTHROPIC_API_KEY, and APP_PASSWORD if you set one, are read from
          the project's .env file at startup, so no secrets live in here. -->
@@ -34,8 +38,8 @@
     <true/>
 
     <key>StandardOutPath</key>
-    <string>/Users/Apple/Code/brick-check/server.log</string>
+    <string>/ABSOLUTE/PATH/TO/brick-check/server.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/Apple/Code/brick-check/server.log</string>
+    <string>/ABSOLUTE/PATH/TO/brick-check/server.log</string>
 </dict>
 </plist>
