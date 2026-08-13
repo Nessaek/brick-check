@@ -11,3 +11,11 @@ usage.json
 
 # Runtime artefacts — the LaunchAgent appends to this on every restart.
 *.log
+
+# Terraform: local state and tfvars hold infrastructure detail, not secrets,
+# but neither belongs in the repo.
+deploy/terraform/.terraform/
+deploy/terraform/*.tfstate
+deploy/terraform/*.tfstate.*
+deploy/terraform/terraform.tfvars
+deploy/terraform/.terraform.lock.hcl

@@ -1,0 +1,58 @@
+#!/bin/bash
+set -euxo pipefail
+exec > >(tee /var/log/brickcheck-setup.log) 2>&1
+
+# Runs once, on first boot. Everything here is idempotent enough to re-run by
+# hand if something fails partway through.
+
+dnf update -y
+dnf install -y docker git
+
+systemctl enable --now docker
+usermod -aG docker ec2-user
+
+# Secrets are pulled from SSM using the instance role, so they never appear in
+# Terraform state, in user-data, or in the AMI. The env file is root-only.
+API_KEY="$(aws ssm get-parameter --name '${api_key_parameter}' --with-decryption --region '${region}' --query 'Parameter.Value' --output text)"
+APP_PASSWORD="$(aws ssm get-parameter --name '${app_password_parameter}' --with-decryption --region '${region}' --query 'Parameter.Value' --output text)"
+
+install -m 600 /dev/null /etc/brickcheck.env
+cat > /etc/brickcheck.env <<EOF
+ANTHROPIC_API_KEY=$API_KEY
+APP_PASSWORD=$APP_PASSWORD
+# The image turns TRUST_PROXY on for load-balanced hosts. Here the container
+# is exposed directly, so leaving it on would let a client spoof
+# X-Forwarded-For and walk past the per-IP rate limit.
+TRUST_PROXY=
+EOF
+chmod 600 /etc/brickcheck.env
+
+git clone '${repo_url}' /opt/brickcheck
+cd /opt/brickcheck
+docker build -t brickcheck .
+
+cat > /etc/systemd/system/brickcheck.service <<'EOF'
+[Unit]
+Description=BrickCheck
+After=docker.service
+Requires=docker.service
+
+[Service]
+Restart=always
+RestartSec=5
+ExecStartPre=-/usr/bin/docker rm -f brickcheck
+ExecStart=/usr/bin/docker run --rm --name brickcheck \
+  -p 80:3000 --env-file /etc/brickcheck.env brickcheck
+ExecStop=/usr/bin/docker stop brickcheck
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now brickcheck
+
+# Surface the two lines that matter in the setup log, so a failed Python layer
+# or a missing password is visible without going hunting.
+sleep 15
+docker logs brickcheck 2>&1 | tail -20 || true

@@ -71,7 +71,8 @@ preprocess/crop.py               Zoomed crops for verification.
 eval/run.js                      Scores the API against known ground truth.
 eval/cases/<name>/               build.jpg + reference.jpg + expected.json
 Dockerfile                       Node + Python image.
-deploy/aws-ec2.md                Worked AWS deployment.
+deploy/aws-ec2.md                AWS deployment, by hand.
+deploy/terraform/                AWS deployment, as code.
 ```
 
 ## API
@@ -139,7 +140,10 @@ The image has been built and run for `linux/amd64` with OpenCV 5.0 working insid
 
 The app doesn't meter or cap spend. Set a spend limit on your Anthropic account instead. Before exposing it to anyone else, set `APP_PASSWORD`, set that limit, and raise your proxy's request timeout above 60 seconds. The rate limiter is in-memory, so it resets on restart and is per-instance.
 
-A worked AWS deployment is in [`deploy/aws-ec2.md`](deploy/aws-ec2.md).
+AWS deployments are covered two ways:
+
+- [`deploy/terraform/`](deploy/terraform/) — Terraform/OpenTofu for the whole thing: security group, IAM role, and an instance that builds and runs the app on first boot. Secrets go in SSM rather than through Terraform, so they never land in state.
+- [`deploy/aws-ec2.md`](deploy/aws-ec2.md) — the same setup done by hand, if you would rather see each step.
 
 ### Running it just for yourself
 

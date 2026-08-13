@@ -1,0 +1,11 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is git-ignored.
+
+# Your own public address, so SSH is not open to the world.
+# Get it with: curl https://checkip.amazonaws.com
+admin_cidr = "203.0.113.7/32"
+
+# An EC2 key pair that already exists in the region below.
+key_name = "my-key-pair"
+
+# region        = "eu-west-2"
+# instance_type = "t4g.small"
