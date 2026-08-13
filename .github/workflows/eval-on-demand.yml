@@ -1,0 +1,46 @@
+name: Eval (manual)
+
+# Not part of CI. Each run makes real API calls costing roughly $0.19, and the
+# suite scores 4/9 to 7/9 on unchanged code, so it would gate merges on a paid
+# coin flip. Run it deliberately, and read it over two or three runs.
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: 'How many times to run the suite (variance is large; 2-3 is sensible)'
+        required: false
+        default: '2'
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install the image processing stack
+        run: |
+          python3 -m venv preprocess/.venv
+          preprocess/.venv/bin/pip install -q -r preprocess/requirements.txt
+
+      - name: Start the server
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          npm start &
+          for _ in $(seq 1 30); do
+            curl -sf -o /dev/null http://127.0.0.1:3000/ && break
+            sleep 2
+          done
+
+      - name: Run the suite
+        run: |
+          for i in $(seq 1 "${{ inputs.runs }}"); do
+            echo "::group::run $i"
+            npm run eval || true   # a failing case is a finding, not a broken job
+            echo "::endgroup::"
+          done

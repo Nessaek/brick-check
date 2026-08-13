@@ -1,0 +1,88 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    # Only redeploy when something the running app actually serves changes.
+    paths:
+      - 'server.js'
+      - 'app.js'
+      - 'index.html'
+      - 'styles.css'
+      - 'preprocess/**'
+      - 'Dockerfile'
+      - 'package.json'
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  # id-token is what lets Actions request an OIDC token to swap for temporary
+  # AWS credentials. Nothing long-lived is stored in the repository.
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE }}
+          aws-region: ${{ vars.AWS_REGION || 'eu-west-2' }}
+
+      - name: Rebuild and restart on the instance
+        id: send
+        run: |
+          command_id=$(aws ssm send-command \
+            --instance-ids "${{ secrets.AWS_INSTANCE_ID }}" \
+            --document-name AWS-RunShellScript \
+            --comment "deploy ${GITHUB_SHA::7}" \
+            --parameters commands='[
+              "set -euxo pipefail",
+              "cd /opt/brickcheck",
+              "git fetch --all",
+              "git reset --hard ${{ github.sha }}",
+              "docker build -t brickcheck .",
+              "systemctl restart brickcheck",
+              "sleep 20",
+              "docker logs brickcheck 2>&1 | tail -20"
+            ]' \
+            --query 'Command.CommandId' --output text)
+          echo "command_id=$command_id" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for it and check the log
+        run: |
+          id="${{ steps.send.outputs.command_id }}"
+          for _ in $(seq 1 60); do
+            status=$(aws ssm get-command-invocation \
+              --command-id "$id" --instance-id "${{ secrets.AWS_INSTANCE_ID }}" \
+              --query 'Status' --output text 2>/dev/null || echo Pending)
+            case "$status" in
+              Success|Failed|TimedOut|Cancelled) break ;;
+            esac
+            sleep 10
+          done
+
+          output=$(aws ssm get-command-invocation \
+            --command-id "$id" --instance-id "${{ secrets.AWS_INSTANCE_ID }}" \
+            --query 'StandardOutputContent' --output text)
+          echo "$output"
+
+          test "$status" = "Success" || {
+            aws ssm get-command-invocation --command-id "$id" \
+              --instance-id "${{ secrets.AWS_INSTANCE_ID }}" \
+              --query 'StandardErrorContent' --output text
+            echo "::error::deploy command finished with status $status"
+            exit 1
+          }
+
+          # A deploy that "succeeds" while the Python layer failed to build is
+          # the failure mode worth catching — the app answers, just worse.
+          echo "$output" | grep -q "Image processing enabled" || {
+            echo "::error::deployed, but image processing is DISABLED on the instance"
+            exit 1
+          }
+          echo "deployed ${GITHUB_SHA::7} and image processing is up"

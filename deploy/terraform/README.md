@@ -92,6 +92,33 @@ Not included:
 - **State backend.** State is local by default. If you move it to S3, remember
   it contains no secrets by design, but still holds your infrastructure layout.
 
+## CI/CD
+
+`enable_github_deploy` (default on) creates an OIDC role that lets GitHub
+Actions redeploy without any long-lived AWS credentials in the repository.
+Actions presents a short-lived token, AWS swaps it for temporary credentials,
+and the trust policy pins that exchange to this repo and the `main` branch —
+`repo:owner/name:*` would let any branch or pull request assume it.
+
+After `apply`, wire the two outputs into the repository:
+
+```bash
+gh secret set AWS_DEPLOY_ROLE --body "$(tofu output -raw github_deploy_role_arn)"
+```
+
+```bash
+gh secret set AWS_INSTANCE_ID --body "$(tofu output -raw instance_id)"
+```
+
+Deploys then run on pushes to `main` that touch the app, via SSM Run Command —
+no inbound SSH, and no deploy key held by GitHub. The workflow fails if the
+instance comes back with image processing disabled, so a deploy that silently
+drops the Python layer is caught rather than shipped.
+
+If `apply` fails with `EntityAlreadyExists` on the OIDC provider, the account
+already has one (they are unique per URL). Set `create_oidc_provider = false`
+and re-apply.
+
 ## Verification status
 
 `tofu validate` passes and the configuration is `tofu fmt` clean. It has **not**
