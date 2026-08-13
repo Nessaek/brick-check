@@ -42,3 +42,9 @@ variable "app_password_parameter" {
   type        = string
   default     = "/brickcheck/app_password"
 }
+
+variable "domain" {
+  description = "Hostname to serve on, if you own one and have pointed it at this instance. Leave empty to use <public-ip>.sslip.io, which resolves to the instance and still gets a real Let's Encrypt certificate."
+  type        = string
+  default     = ""
+}

@@ -15,7 +15,7 @@ jobs:
     name: Syntax and secrets
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Node syntax
         run: |
@@ -50,7 +50,7 @@ jobs:
     name: Docker image builds and runs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Build
         run: docker build -t brickcheck:ci .
@@ -103,7 +103,7 @@ jobs:
     name: Terraform config is valid
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: opentofu/setup-opentofu@v1
 
       - run: tofu fmt -check -recursive

@@ -36,9 +36,19 @@ resource "aws_security_group" "brickcheck" {
   }
 
   ingress {
-    description = "HTTP"
+    # Kept open alongside 443: Caddy needs it for the ACME HTTP-01 challenge
+    # and to redirect plain requests to HTTPS.
+    description = "HTTP (ACME challenge and redirect to HTTPS)"
     from_port   = 80
     to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "HTTPS"
+    from_port   = 443
+    to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -120,6 +130,7 @@ resource "aws_instance" "brickcheck" {
   user_data_replace_on_change = true
   user_data = templatefile("${path.module}/user-data.sh.tftpl", {
     region                 = var.region
+    domain                 = var.domain
     repo_url               = var.repo_url
     api_key_parameter      = var.api_key_parameter
     app_password_parameter = var.app_password_parameter

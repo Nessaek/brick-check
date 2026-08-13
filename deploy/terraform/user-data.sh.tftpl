@@ -2,8 +2,7 @@
 set -euxo pipefail
 exec > >(tee /var/log/brickcheck-setup.log) 2>&1
 
-# Runs once, on first boot. Everything here is idempotent enough to re-run by
-# hand if something fails partway through.
+# Runs once, on first boot.
 
 dnf update -y
 dnf install -y docker git
@@ -11,25 +10,53 @@ dnf install -y docker git
 systemctl enable --now docker
 usermod -aG docker ec2-user
 
-# Secrets are pulled from SSM using the instance role, so they never appear in
-# Terraform state, in user-data, or in the AMI. The env file is root-only.
+# Secrets come from SSM using the instance role, so they never appear in
+# Terraform state, in user-data, or in the AMI.
 API_KEY="$(aws ssm get-parameter --name '${api_key_parameter}' --with-decryption --region '${region}' --query 'Parameter.Value' --output text)"
 APP_PASSWORD="$(aws ssm get-parameter --name '${app_password_parameter}' --with-decryption --region '${region}' --query 'Parameter.Value' --output text)"
+
+# Caddy needs a hostname to get a certificate for. With no domain of your own,
+# fall back to sslip.io, which resolves <ip>.sslip.io straight to <ip> — good
+# enough for Let's Encrypt to issue a real, publicly trusted certificate.
+SITE='${domain}'
+if [ -z "$SITE" ]; then
+  # IMDSv2 is required on this instance, so fetch a token first.
+  TOKEN=$(curl -sX PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
+  PUBLIC_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4)
+  SITE="$PUBLIC_IP.sslip.io"
+fi
+echo "serving as $SITE"
 
 install -m 600 /dev/null /etc/brickcheck.env
 cat > /etc/brickcheck.env <<EOF
 ANTHROPIC_API_KEY=$API_KEY
 APP_PASSWORD=$APP_PASSWORD
-# The image turns TRUST_PROXY on for load-balanced hosts. Here the container
-# is exposed directly, so leaving it on would let a client spoof
-# X-Forwarded-For and walk past the per-IP rate limit.
-TRUST_PROXY=
+# Correct here: Caddy terminates TLS and sets X-Forwarded-For, and the app
+# container publishes no host port, so requests cannot arrive any other way.
+TRUST_PROXY=1
 EOF
 chmod 600 /etc/brickcheck.env
 
 git clone '${repo_url}' /opt/brickcheck
 cd /opt/brickcheck
 docker build -t brickcheck .
+
+# Private network between Caddy and the app. The app deliberately publishes
+# no host port — if it did, anyone could reach it directly on :3000 and forge
+# X-Forwarded-For to walk past the rate limit.
+docker network create brickcheck 2>/dev/null || true
+
+mkdir -p /etc/caddy
+cat > /etc/caddy/Caddyfile <<EOF
+$SITE {
+	reverse_proxy brickcheck:3000 {
+		transport http {
+			# Analyses run to about a minute; the default would cut them off.
+			read_timeout 300s
+		}
+	}
+}
+EOF
 
 cat > /etc/systemd/system/brickcheck.service <<'EOF'
 [Unit]
@@ -42,8 +69,31 @@ Restart=always
 RestartSec=5
 ExecStartPre=-/usr/bin/docker rm -f brickcheck
 ExecStart=/usr/bin/docker run --rm --name brickcheck \
-  -p 80:3000 --env-file /etc/brickcheck.env brickcheck
+  --network brickcheck \
+  --env-file /etc/brickcheck.env brickcheck
 ExecStop=/usr/bin/docker stop brickcheck
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat > /etc/systemd/system/caddy.service <<'EOF'
+[Unit]
+Description=Caddy TLS terminator for BrickCheck
+After=docker.service brickcheck.service
+Requires=docker.service
+
+[Service]
+Restart=always
+RestartSec=5
+ExecStartPre=-/usr/bin/docker rm -f caddy
+ExecStart=/usr/bin/docker run --rm --name caddy \
+  --network brickcheck \
+  -p 80:80 -p 443:443 \
+  -v /etc/caddy/Caddyfile:/etc/caddy/Caddyfile:ro \
+  -v caddy_data:/data -v caddy_config:/config \
+  caddy:2
+ExecStop=/usr/bin/docker stop caddy
 
 [Install]
 WantedBy=multi-user.target
@@ -51,8 +101,14 @@ EOF
 
 systemctl daemon-reload
 systemctl enable --now brickcheck
+systemctl enable --now caddy
 
-# Surface the two lines that matter in the setup log, so a failed Python layer
-# or a missing password is visible without going hunting.
-sleep 15
+# Surface the lines that matter in the setup log, so a failed Python layer or
+# a certificate problem is visible without going hunting.
+sleep 25
+echo "--- app ---"
 docker logs brickcheck 2>&1 | tail -20 || true
+echo "--- caddy ---"
+docker logs caddy 2>&1 | tail -20 || true
+echo "--- reachable over https? ---"
+curl -sS -o /dev/null -w "https://$SITE/ -> %%{http_code} (401 expected, meaning TLS is up and the password gate is on)\n" "https://$SITE/" || true

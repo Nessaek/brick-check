@@ -83,14 +83,35 @@ the setup script rebuilds the instance rather than silently doing nothing.
 
 Not included:
 
-- **HTTPS.** Port 80 only, so the password crosses the network in clear text.
-  Fine for a trial; put Caddy or an ALB in front before relying on it.
 - **A static address.** Stop/start gives the instance a new public IP. Add an
   `aws_eip` if that matters.
 - **A spend cap.** The app does not meter spend. Set a limit on the Anthropic
   account — that is the only control.
 - **State backend.** State is local by default. If you move it to S3, remember
   it contains no secrets by design, but still holds your infrastructure layout.
+
+## HTTPS
+
+Caddy runs in front of the app and gets a Let's Encrypt certificate
+automatically. The app container publishes no host port at all — it is
+reachable only over a private Docker network from Caddy, so nobody can hit it
+directly on :3000 and forge `X-Forwarded-For` to get past the rate limit.
+
+Let's Encrypt needs a hostname, not an IP. With no domain set, the instance
+serves as `<public-ip>.sslip.io` — sslip.io resolves that straight back to the
+IP, and it is a real hostname, so the certificate is genuine and publicly
+trusted. No domain purchase, no DNS to configure.
+
+If you do own a domain, point an A record at the instance and set:
+
+```hcl
+domain = "brickcheck.example.com"
+```
+
+Two consequences of the sslip.io default worth knowing: stopping and starting
+the instance changes its public IP, which changes the hostname and means a new
+certificate (add an `aws_eip` if that matters), and sslip.io is a third party
+in your name resolution. A real domain avoids both.
 
 ## CI/CD
 

@@ -4,8 +4,8 @@ output "public_ip" {
 }
 
 output "url" {
-  description = "Where the app will answer once cloud-init has finished building it."
-  value       = "http://${aws_instance.brickcheck.public_ip}/"
+  description = "Where the app answers once cloud-init has finished. Certificate issuance adds a few seconds on first request."
+  value       = var.domain != "" ? "https://${var.domain}/" : "https://${aws_instance.brickcheck.public_ip}.sslip.io/"
 }
 
 output "ssh" {
