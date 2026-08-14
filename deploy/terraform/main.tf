@@ -28,7 +28,7 @@ resource "aws_security_group" "brickcheck" {
   vpc_id      = data.aws_vpc.default.id
 
   ingress {
-    description = "SSH, restricted to the operator's address"
+    description = "SSH, restricted to the operator address"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
