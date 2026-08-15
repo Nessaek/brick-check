@@ -31,6 +31,41 @@ variable "github_deploy_ref" {
   default     = "refs/heads/main"
 }
 
+# GitHub now issues OIDC subjects carrying immutable numeric IDs alongside the
+# names — repo:owner@1234/name@5678:ref:... rather than repo:owner/name:ref:...
+# The IDs survive a rename or transfer, so nobody can claim this trust policy
+# by taking over an abandoned repository name. Both forms are pinned exactly
+# below, so this works whichever GitHub sends; wildcards would give the rename
+# protection away again.
+#
+# Find them with:
+#   gh api repos/OWNER/NAME --jq '{owner_id: .owner.id, repo_id: .id}'
+
+variable "github_owner_id" {
+  description = "Immutable numeric ID of the repository owner. Leave empty to accept only the name-based subject form."
+  type        = string
+  default     = "26835857"
+}
+
+variable "github_repo_id" {
+  description = "Immutable numeric ID of the repository."
+  type        = string
+  default     = "1328762433"
+}
+
+locals {
+  github_owner = split("/", var.github_repo)[0]
+  github_name  = split("/", var.github_repo)[1]
+
+  # StringEquals against a list matches if ANY entry matches, so both subject
+  # formats are accepted without loosening either into a wildcard.
+  github_subjects = compact([
+    "repo:${var.github_repo}:ref:${var.github_deploy_ref}",
+    var.github_owner_id != "" && var.github_repo_id != "" ?
+    "repo:${local.github_owner}@${var.github_owner_id}/${local.github_name}@${var.github_repo_id}:ref:${var.github_deploy_ref}" : "",
+  ])
+}
+
 resource "aws_iam_openid_connect_provider" "github" {
   count = var.enable_github_deploy && var.create_oidc_provider ? 1 : 0
 
@@ -67,7 +102,7 @@ resource "aws_iam_role" "github_deploy" {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           # Pinning the exact ref matters: `repo:owner/name:*` would let any
           # branch, tag or pull request from the repo assume this role.
-          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repo}:ref:${var.github_deploy_ref}"
+          "token.actions.githubusercontent.com:sub" = local.github_subjects
         }
       }
     }]
