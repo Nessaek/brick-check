@@ -6,8 +6,8 @@ const crypto = require('crypto');
 const { execFile } = require('child_process');
 
 const root = __dirname;
-const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
-const STATIC_FILES = new Set(['/index.html', '/app.js', '/styles.css']);
+const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.jpg': 'image/jpeg' };
+const STATIC_FILES = new Set(['/index.html', '/app.js', '/styles.css', '/example-reference.jpg']);
 
 function loadEnv() {
   const envPath = path.join(root, '.env');

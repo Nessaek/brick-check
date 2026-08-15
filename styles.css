@@ -16,3 +16,233 @@
 /* Centre each pin on its point instead of hanging it down-and-right. */
 .pin { transform: translate(-50%, -50%); }
 .pin.active-pin { transform: translate(-50%, -50%) scale(1.24); }
+
+/* ============================================================
+   Playful pass. Appended rather than woven in, so the original
+   layout stays readable and this can be lifted out wholesale.
+   The motif is the stud: the mark, the buttons and the panel
+   tops all carry it, and anything clickable depresses like a
+   brick being pressed rather than just changing colour.
+   ============================================================ */
+
+:root {
+  --brick-red: #d01012;
+  --brick-blue: #0057a6;
+  --brick-yellow: #f5c518;
+  --brick-green: #237841;
+  --stud: radial-gradient(circle at 50% 50%, #ffffff70 38%, transparent 39%);
+}
+
+/* Faint stud grid, so the page reads as a baseplate without
+   competing with the content sitting on it. */
+body {
+  background-color: var(--cream);
+  background-image: radial-gradient(circle at 10px 10px, #0000000a 3px, transparent 4px);
+  background-size: 34px 34px;
+}
+
+/* Brand mark: a stud on top of a brick. */
+.brand-mark {
+  background: var(--brick-red);
+  border-radius: 6px;
+  box-shadow: inset 0 -3px #0003, 0 2px 0 #0002;
+  position: relative;
+}
+.brand-mark::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 6px;
+  border-radius: 4px 4px 2px 2px;
+  background: var(--brick-red);
+  box-shadow: inset 0 2px #ffffff55;
+}
+
+.hero h1 em {
+  color: var(--brick-red);
+  font-style: normal;
+  position: relative;
+}
+/* Hand-drawn-ish underline, so the emphasis feels drawn rather than styled. */
+.hero h1 em::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 2px;
+  height: 8px;
+  background: var(--brick-yellow);
+  opacity: .55;
+  border-radius: 6px;
+  z-index: -1;
+}
+
+/* Panels get a row of studs along the top edge. These sit on a white
+   surface, so they need a dark tint — the white --stud used elsewhere is
+   invisible here. */
+.input-panel, .build-map, .issues article, .success-card {
+  position: relative;
+  border-radius: 14px;
+}
+.input-panel::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  left: 22px;
+  right: 22px;
+  height: 8px;
+  background-image: radial-gradient(circle at 50% 120%, #19251f14 46%, transparent 47%);
+  background-size: 26px 16px;
+  background-repeat: repeat-x;
+  pointer-events: none;
+}
+
+.step {
+  background: var(--brick-blue);
+  color: #fff;
+  border-radius: 6px;
+}
+
+/* Primary action: a chunky brick you press. */
+.analyze {
+  background: var(--brick-red);
+  border-radius: 11px;
+  font-size: 15px;
+  letter-spacing: -.1px;
+  box-shadow: 0 4px 0 #8d0b0d, 0 6px 14px #d0101233;
+  transform: translateY(0);
+  transition: transform .08s ease, box-shadow .08s ease, background .2s;
+}
+.analyze:hover:not(:disabled) { background: #e01416; }
+.analyze:active:not(:disabled) {
+  transform: translateY(4px);
+  box-shadow: 0 0 0 #8d0b0d, 0 2px 6px #d0101233;
+}
+.analyze:disabled {
+  background: #c9cdc9;
+  box-shadow: 0 4px 0 #adb2ad;
+  cursor: not-allowed;
+}
+.analyze .sparkle { animation: nudge 2.4s ease-in-out infinite; display: inline-block; }
+@keyframes nudge {
+  0%, 88%, 100% { transform: rotate(0) scale(1); }
+  92% { transform: rotate(-14deg) scale(1.18); }
+  96% { transform: rotate(14deg) scale(1.18); }
+}
+
+/* Drop zone: lifts and turns friendly on drag. */
+.upload-zone {
+  border-width: 2px;
+  border-radius: 14px;
+  transition: transform .15s ease, border-color .15s, background .15s;
+}
+.upload-zone:hover { border-color: var(--brick-blue); background: #f4f8ff; }
+.upload-zone.dragging {
+  border-color: var(--brick-red);
+  background: #fff5f5;
+  transform: scale(1.015);
+}
+.upload-icon {
+  background: var(--brick-yellow) !important;
+  color: #6b4e00 !important;
+  border-radius: 50%;
+  box-shadow: 0 3px 0 #c99f0d;
+  transition: transform .2s ease;
+}
+.upload-zone:hover .upload-icon { transform: translateY(-3px); }
+
+/* The example reference now shows a real build. */
+.reference-image { background: #eceae4; }
+.reference-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.reference-card {
+  border-radius: 12px;
+  border-width: 2px;
+  transition: border-color .2s, transform .15s ease;
+}
+.reference-card:hover { border-color: var(--brick-blue); transform: translateY(-2px); }
+
+.instruction-button {
+  border-radius: 11px;
+  border-width: 2px;
+  transition: border-color .2s, transform .12s ease, background .2s;
+}
+.instruction-button:hover {
+  border-color: var(--brick-yellow);
+  background: #fffdf4;
+  transform: translateY(-2px);
+}
+
+/* Issue pins: bolder, and the active one gets a gentle pulse so the
+   eye is drawn to the spot being described. */
+.pin {
+  border-width: 3px;
+  font-weight: 800;
+  box-shadow: 0 3px 8px #0005;
+  transition: transform .18s cubic-bezier(.34, 1.56, .64, 1), background .2s;
+}
+.pin:hover { transform: translate(-50%, -50%) scale(1.18); }
+.pin.active-pin { animation: pulse 1.8s ease-in-out infinite; }
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 3px 8px #0005, 0 0 0 0 #d0101266; }
+  50%      { box-shadow: 0 3px 8px #0005, 0 0 0 12px #d0101200; }
+}
+
+.issues article {
+  border-width: 2px;
+  transition: transform .15s ease, border-color .2s, box-shadow .2s;
+}
+.issues article:hover { transform: translateX(3px); }
+.issues article.active {
+  border-color: var(--brick-red);
+  box-shadow: 0 4px 0 #f0d6d6;
+}
+.issue-number {
+  background: var(--brick-red) !important;
+  color: #fff !important;
+  border-radius: 8px;
+  font-weight: 800;
+  box-shadow: inset 0 -2px #0003;
+}
+
+.success-card {
+  border-width: 2px;
+  border-color: var(--brick-green);
+  background: #f2fbf5;
+}
+.success-icon { background: var(--brick-green) !important; }
+
+/* Loader: bricks that tumble rather than merely float. */
+.loader-brick i:nth-child(1) { background: var(--brick-red) !important; }
+.loader-brick i:nth-child(2) { background: var(--brick-blue) !important; }
+.loader-brick i:nth-child(3) { background: var(--brick-yellow) !important; }
+.loader-brick i:nth-child(4) { background: var(--brick-green) !important; }
+.loader-brick { animation: tumble 1.6s ease-in-out infinite; }
+@keyframes tumble {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25%      { transform: translateY(-10px) rotate(-8deg); }
+  75%      { transform: translateY(-10px) rotate(8deg); }
+}
+
+/* Visible focus for keyboard users — the hover states above are
+   mouse-only, and this is the one accessibility gap they would open. */
+button:focus-visible, .upload-zone:focus-within, a:focus-visible {
+  outline: 3px solid var(--brick-blue);
+  outline-offset: 3px;
+}
+
+/* Honour a reduced-motion preference: keep the colour, drop the movement. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+}

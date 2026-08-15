@@ -21,7 +21,7 @@ RUN python3 -m venv preprocess/.venv \
 
 # The server has no npm dependencies, so there is nothing to install here.
 COPY package.json ./
-COPY server.js app.js index.html styles.css ./
+COPY server.js app.js index.html styles.css example-reference.jpg ./
 COPY preprocess/align.py preprocess/grid.py preprocess/crop.py preprocess/
 
 # TRUST_PROXY makes the rate limiter read X-Forwarded-For, which is correct
