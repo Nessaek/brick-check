@@ -66,13 +66,29 @@ jobs:
       - name: Starts, serves, and gates on the password
         run: |
           docker run -d --name ci -p 3000:3000 -e APP_PASSWORD=ci-test brickcheck:ci
-          for _ in $(seq 1 30); do
-            curl -sf -o /dev/null -u u:ci-test http://127.0.0.1:3000/ && break
+
+          # Wait for the startup banner, NOT for the port. listen() binds before
+          # its callback runs, and that callback awaits a Python probe first, so
+          # the server answers HTTP a few hundred ms before it has logged
+          # anything. Polling the port meant this job read an empty log and
+          # failed at random. Waiting on the last line printed means all of them
+          # are present.
+          ready=
+          for _ in $(seq 1 45); do
+            case "$(docker logs ci 2>&1)" in
+              *"Password protection enabled"*|*"No APP_PASSWORD set"*) ready=1; break ;;
+            esac
             sleep 2
           done
 
           logs=$(docker logs ci 2>&1)
           echo "$logs"
+
+          if [ -z "$ready" ]; then
+            echo "::error::container never finished starting within 90s"
+            docker inspect -f 'state={{.State.Status}} exit={{.State.ExitCode}}' ci || true
+            exit 1
+          fi
 
           # The failure this guards against is silent: without the Python
           # layer the app still answers, just much worse.
