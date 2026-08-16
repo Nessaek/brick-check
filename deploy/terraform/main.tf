@@ -131,6 +131,7 @@ resource "aws_instance" "brickcheck" {
   user_data = templatefile("${path.module}/user-data.sh.tftpl", {
     region                 = var.region
     domain                 = var.domain
+    require_password       = var.require_password
     repo_url               = var.repo_url
     api_key_parameter      = var.api_key_parameter
     app_password_parameter = var.app_password_parameter

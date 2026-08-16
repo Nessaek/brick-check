@@ -29,6 +29,7 @@ aws ssm put-parameter --name /brickcheck/anthropic_api_key --type SecureString -
 
 ```bash
 aws ssm put-parameter --name /brickcheck/app_password --type SecureString --value 'choose-a-strong-one'
+# Skip this one if you set require_password = false — nothing reads it then.
 ```
 
 Rotating a key later is a `put-parameter --overwrite` plus an instance reboot;
@@ -66,7 +67,7 @@ ssh ec2-user@<public-ip> 'docker logs brickcheck'
 
 ```
 Image processing enabled — photo alignment, coordinate grid and zoomed issue verification are all active.
-Password protection enabled (APP_PASSWORD).
+Password protection enabled (APP_PASSWORD).   # absent when require_password = false
 ```
 
 `Image processing DISABLED` means the Python layer did not build, and the app
@@ -86,9 +87,31 @@ Not included:
 - **A static address.** Stop/start gives the instance a new public IP. Add an
   `aws_eip` if that matters.
 - **A spend cap.** The app does not meter spend. Set a limit on the Anthropic
-  account — that is the only control.
+  account — that is the only control. This matters more with
+  `require_password = false`, where that limit is the *only* thing bounding
+  what anonymous visitors can cost you.
 - **State backend.** State is local by default. If you move it to S3, remember
   it contains no secrets by design, but still holds your infrastructure layout.
+
+## Password, or not
+
+`require_password` (default on) puts the site behind a shared HTTP Basic
+password read from SSM. Set it to `false` in `terraform.tfvars` and the site is
+fully public.
+
+That is a deliberate trade, not an oversight: every visitor spends your API
+credit, the per-IP rate limit slows abuse but does not stop it, and the spend
+limit on your Anthropic account is what actually caps the damage. Set that
+limit before turning the password off.
+
+Changing this rewrites user-data, and `user_data_replace_on_change` means the
+instance is **replaced** — a new public IP, a new sslip.io hostname, a fresh
+certificate, and a new instance ID. Re-set the GitHub secret afterwards or
+deploys will target an instance that no longer exists:
+
+```bash
+gh secret set AWS_INSTANCE_ID --body "$(tofu output -raw instance_id)"
+```
 
 ## HTTPS
 

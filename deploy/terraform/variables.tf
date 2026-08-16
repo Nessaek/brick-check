@@ -48,3 +48,9 @@ variable "domain" {
   type        = string
   default     = ""
 }
+
+variable "require_password" {
+  description = "Put the app behind a shared HTTP Basic password. With this off the site is fully public, and the spend limit on your Anthropic account is the only thing bounding what visitors can cost you."
+  type        = bool
+  default     = true
+}

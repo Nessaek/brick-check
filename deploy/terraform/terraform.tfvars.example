@@ -9,3 +9,7 @@ key_name = "my-key-pair"
 
 # region        = "eu-west-2"
 # instance_type = "t4g.small"
+
+# Set false to drop the shared password and make the site fully public. The
+# spend limit on your Anthropic account becomes the only cost control.
+# require_password = false

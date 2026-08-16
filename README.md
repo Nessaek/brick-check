@@ -133,12 +133,12 @@ The image has been built and run for `linux/amd64` with OpenCV 5.0 working insid
 | Variable | Purpose |
 | --- | --- |
 | `ANTHROPIC_API_KEY` | Required. Don't bake it into the image. |
-| `APP_PASSWORD` | Shared password (HTTP Basic). Unset means no authentication and anyone can spend your API credit. |
+| `APP_PASSWORD` | Shared password (HTTP Basic). Unset means no authentication and anyone who can reach the server can spend your API credit. |
 | `TRUST_PROXY` | Set to `1` only behind a load balancer that sets `X-Forwarded-For`. The Dockerfile defaults it on; unset it if the container is exposed directly, or the rate limit can be spoofed. |
 | `HOST` | Bind address, default `0.0.0.0`. Use `127.0.0.1` to keep it off the local network. |
 | `PORT`, `CLAUDE_MODEL` | Optional. |
 
-The app doesn't meter or cap spend. Set a spend limit on your Anthropic account instead. Before exposing it to anyone else, set `APP_PASSWORD`, set that limit, and raise your proxy's request timeout above 60 seconds. The rate limiter is in-memory, so it resets on restart and is per-instance.
+The app doesn't meter or cap spend. Set a spend limit on your Anthropic account instead. Before exposing it to anyone else, set that limit and raise your proxy's request timeout above 60 seconds. `APP_PASSWORD` is the other lever: with it unset the site is open to anyone who finds it, so the account limit is all that bounds the bill. The rate limiter is in-memory, so it resets on restart and is per-instance.
 
 AWS deployments are covered two ways:
 

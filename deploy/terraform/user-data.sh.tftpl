@@ -13,7 +13,16 @@ usermod -aG docker ec2-user
 # Secrets come from SSM using the instance role, so they never appear in
 # Terraform state, in user-data, or in the AMI.
 API_KEY="$(aws ssm get-parameter --name '${api_key_parameter}' --with-decryption --region '${region}' --query 'Parameter.Value' --output text)"
-APP_PASSWORD="$(aws ssm get-parameter --name '${app_password_parameter}' --with-decryption --region '${region}' --query 'Parameter.Value' --output text)"
+
+# With require_password off the app is deliberately public: APP_PASSWORD is
+# left unset rather than blank, because the server treats any non-empty value
+# as a password to enforce.
+REQUIRE_PASSWORD='${require_password}'
+if [ "$REQUIRE_PASSWORD" = "true" ]; then
+  APP_PASSWORD="$(aws ssm get-parameter --name '${app_password_parameter}' --with-decryption --region '${region}' --query 'Parameter.Value' --output text)"
+else
+  APP_PASSWORD=""
+fi
 
 # Caddy needs a hostname to get a certificate for. With no domain of your own,
 # fall back to sslip.io, which resolves <ip>.sslip.io straight to <ip> — good
@@ -111,4 +120,6 @@ docker logs brickcheck 2>&1 | tail -20 || true
 echo "--- caddy ---"
 docker logs caddy 2>&1 | tail -20 || true
 echo "--- reachable over https? ---"
-curl -sS -o /dev/null -w "https://$SITE/ -> %%{http_code} (401 expected, meaning TLS is up and the password gate is on)\n" "https://$SITE/" || true
+if [ -n "$APP_PASSWORD" ]; then EXPECT="401 expected: TLS is up and the password gate is on"
+else EXPECT="200 expected: TLS is up and the site is deliberately public"; fi
+curl -sS -o /dev/null -w "https://$SITE/ -> %%{http_code} ($EXPECT)\n" "https://$SITE/" || true
