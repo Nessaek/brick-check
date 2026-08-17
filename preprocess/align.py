@@ -245,13 +245,28 @@ def align_and_normalize(target_path, warp_path):
     if not ok:
         return {"success": False, "reason": "Failed to encode the aligned image."}
 
+    # Candidate regions need a higher bar than the alignment itself, because a
+    # wrong hint is worse than no hint. Measured on one build, three runs each:
+    # aligned reference with bad hints found NOTHING; the same aligned
+    # reference with hints suppressed found the defect, as did no alignment at
+    # all. Pointed at false candidates the model rejects them correctly, then
+    # concludes the build is fine — the hints anchor the search instead of
+    # focusing it, even though the prompt tells it to keep scanning.
+    #
+    # Hint accuracy tracks registration quality: at 0.94 the flagged region
+    # landed on the real defect, at 0.66 one of four did, at 0.59 none did.
+    # Residual error at moderate correlation is enough to light up cells that
+    # hold no defect. So the reference is still worth warping and showing at
+    # 0.45, but nothing is asserted about *where* to look below 0.80.
+    regions = detect_diff_regions(target, normalized, valid) if score >= 0.80 else []
+
     return {
         "success": True,
         "method": method,
         "correlation": round(score, 3),
         "image_base64": base64.b64encode(buf).decode("ascii"),
         "mime": "image/png",
-        "regions": detect_diff_regions(target, normalized, valid),
+        "regions": regions,
     }
 
 

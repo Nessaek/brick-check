@@ -73,6 +73,13 @@ check('frameless photo aligns via feature matching',
       r.get('success') and r.get('method') == 'features',
       f"success={r.get('success')} method={r.get('method')} zncc={r.get('correlation')}")
 
+# ...but a moderate-quality alignment must not emit candidate regions. With
+# hints from this pair the model reported nothing at all three times running;
+# with them suppressed it found the defect. Wrong hints anchor the search.
+check('moderate alignment emits no candidate regions',
+      (r.get('correlation') or 0) < 0.80 and len(r.get('regions', [])) == 0,
+      f"zncc={r.get('correlation')} regions={len(r.get('regions', []))}")
+
 # A photo aligned against worktop speckle rather than the model scored 0.27
 # and placed the subject in the wrong corner. It must stay rejected.
 r = run('pig-lying-clean')
