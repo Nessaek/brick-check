@@ -63,6 +63,15 @@ jobs:
             /app/preprocess/.venv/bin/python3 -c \
             "import cv2, numpy, skimage; print('opencv', cv2.__version__)"
 
+      - name: Alignment and diff detection still work
+        run: |
+          # Needs no API key and runs in seconds, so unlike the eval suite it
+          # can gate every push. Guards the stage that failed silently before:
+          # a broken diff threshold does not crash anything, it just quietly
+          # stops finding defects.
+          docker run --rm -v "$PWD/eval:/eval:ro" brickcheck:ci \
+            /app/preprocess/.venv/bin/python3 /eval/align_selftest.py /eval/cases
+
       - name: Starts, serves, and gates on the password
         run: |
           docker run -d --name ci -p 3000:3000 -e APP_PASSWORD=ci-test brickcheck:ci

@@ -24,7 +24,7 @@ There are no npm dependencies and no build step. `PORT` and `CLAUDE_MODEL` can b
 
 A single "here are two photos, what's different?" API call doesn't work well. Tested against a mosaic photo with one brick removed, it found nothing — the defect was about 4% of the frame, and a vision model spreads its attention over the whole image. Most of the pipeline exists to concentrate attention on the parts that matter.
 
-**Alignment.** `preprocess/align.py` finds the build's rectangular frame in both photos, warps the reference onto the build's viewpoint, and histogram-matches the colour. Without this, a photo taken in warm light reads as wrong-coloured bricks. It needs a detectable frame, so it works on flat mosaics and skips loose 3D builds.
+**Alignment.** `preprocess/align.py` warps the reference onto the build's viewpoint and histogram-matches the colour. Without this, a photo taken in warm light reads as wrong-coloured bricks. It tries two routes: the build's rectangular frame, which is exact where it exists, then SIFT feature matching for free-standing models that have no frame at all. Frame detection alone engaged on 2 of 9 eval cases — both synthetic — so alignment was off for every real photo. Every homography is validated for plausibility and then correlated against the build; anything below 0.45 is rejected, because a wrong alignment is worse than none. One photo aligned to a granite worktop's speckle instead of the model and scored 0.27.
 
 **Difference detection.** Once the photos are registered, the two are diffed by mean colour per brick-sized cell. Per-pixel diffing doesn't work — a pixel or two of residual alignment error puts ghosting on every stud edge, which drowns out the real defect. Averaging over a cell cancels that. The strongest candidates go to Claude as zoomed crop pairs.
 
@@ -58,14 +58,16 @@ Image processing enabled — photo alignment, coordinate grid and zoomed issue v
 
 The alternative is `Image processing DISABLED`, which means the Python stack isn't there.
 
-Alignment specifically needs a visible rectangular frame, so it engages on framed mosaics and not on loose builds. When it fails, the original photos are used and the reason comes back in `alignReason`. The `mosaic-*` eval cases cover this path; regenerate their fixtures with `preprocess/.venv/bin/python3 eval/make-mosaic-fixtures.py`.
+Alignment engages on about half the eval cases: framed mosaics via frame detection, free-standing models via feature matching, and it declines the rest rather than guessing. When it fails the original photos are used and the reason comes back in `alignReason`. The `mosaic-*` fixtures cover the frame path; regenerate them with `preprocess/.venv/bin/python3 eval/make-mosaic-fixtures.py`.
+
+`eval/align_selftest.py` checks this stage without spending anything — it asserts a known missing tile still produces a candidate region, a known-clean pair still produces none, and a known-bad match is still rejected. CI runs it on every push. It exists because the diff threshold was unreachable for a long time and nothing failed; the stage just quietly stopped contributing.
 
 ## Layout
 
 ```
 index.html, app.js, styles.css   Front end. No framework, no build step.
 server.js                        Static files, /api/analyze, the pipeline.
-preprocess/align.py              Frame alignment, colour match, cell diff.
+preprocess/align.py              Alignment (frame + features), colour match, cell diff.
 preprocess/grid.py               Coordinate grid overlay.
 preprocess/crop.py               Zoomed crops for verification.
 eval/run.js                      Scores the API against known ground truth.
