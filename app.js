@@ -13,6 +13,7 @@ let alignedReference = '';
 let previewUrl = '';
 const referenceUpload = document.querySelector('#reference-upload');
 const instructionUpload = document.querySelector('#instruction-upload');
+let referenceKind = 'photo';
 const imageExtensions = /\.(jpe?g|png|gif|webp|heic|heif|bmp|avif)$/i;
 
 function isImageFile(file) {
@@ -122,8 +123,9 @@ const referenceDefaults = {
   status: document.querySelector('#reference-status').textContent
 };
 
-async function setReference(file, label) {
+async function setReference(file, label, kind) {
   if (!isImageFile(file)) return;
+  referenceKind = kind || 'photo';
   referenceImage = await fileToUploadDataURL(file);
   referenceImageArea.innerHTML = `<img src="${referenceImage}" alt="Selected build reference">`;
   document.querySelector('#reference-title').textContent = label;
@@ -133,6 +135,7 @@ async function setReference(file, label) {
 }
 function clearReference() {
   referenceImage = '';
+  referenceKind = 'photo';
   alignedReference = '';
   referenceUpload.value = '';
   instructionUpload.value = '';
@@ -145,8 +148,10 @@ function clearReference() {
 document.querySelector('#change-ref').addEventListener('click', () => referenceUpload.click());
 document.querySelector('#remove-ref').addEventListener('click', clearReference);
 document.querySelector('#upload-instructions').addEventListener('click', () => instructionUpload.click());
-referenceUpload.addEventListener('change', event => setReference(event.target.files[0], 'Custom reference image'));
-instructionUpload.addEventListener('change', event => setReference(event.target.files[0], 'Instruction page uploaded'));
+referenceUpload.addEventListener('change', event => setReference(event.target.files[0], 'Custom reference image', 'photo'));
+// The kind is not cosmetic: it is what opts this analysis into reading the
+// page for a set number, which in turn is what unlocks the parts list.
+instructionUpload.addEventListener('change', event => setReference(event.target.files[0], 'Instruction page uploaded', 'instructions'));
 
 analyze.addEventListener('click', async () => {
   if (!uploadedImage) {
@@ -163,11 +168,12 @@ analyze.addEventListener('click', async () => {
   }
   loading.classList.remove('hidden');
   try {
-    const response = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: uploadedImage, referenceImage }) });
+    const response = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: uploadedImage, referenceImage, referenceKind }) });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Analysis failed.');
     alignedReference = data.alignedReference || '';
     renderIssues(data.issues, data.mode, data.aligned, data.alignReason, data.verified);
+    renderParts(data.issues, data.set, data.partsSource);
   } catch (error) {
     renderIssues([], 'error');
     document.querySelector('.results-heading p').textContent = error.message;
@@ -293,6 +299,63 @@ function severityClass(type = '') {
   if (type.includes('ORIENTATION')) return 'amber';
   if (type.includes('WRONG PIECE')) return 'purple';
   return '';
+}
+
+// The shopping list. Deliberately shows nothing at all unless a set number was
+// read off an instruction page — a plausible-looking wrong part code is worse
+// than no code, because the user finds out by receiving the wrong brick.
+function renderParts(issues, set, partsSource) {
+  const panel = document.querySelector('#parts-panel');
+  if (!panel) return;
+  const list = (issues || []).filter(issue => issue.part);
+
+  if (!set) {
+    panel.hidden = true;
+    panel.innerHTML = '';
+    return;
+  }
+
+  const setLabel = escapeHtml([set.name, set.number].filter(Boolean).join(' · '));
+  const stepLabel = set.step ? ` · step ${escapeHtml(set.step)}` : '';
+  let body;
+
+  if (list.length) {
+    body = `<ul class="parts-list">${list.map(issue => {
+      const part = issue.part;
+      // Element ID is part + colour, and is what LEGO's own replacement
+      // service takes. The design ID alone does not specify a colour.
+      const code = part.elementId
+        ? `<b>${escapeHtml(part.elementId)}</b><span>element ID</span>`
+        : `<b>${escapeHtml(part.partNum)}</b><span>design ID</span>`;
+      const thumb = part.imageUrl
+        ? `<img src="${escapeHtml(part.imageUrl)}" alt="" loading="lazy" />`
+        : '<span class="parts-thumb-blank"></span>';
+      return `<li>
+        ${thumb}
+        <div>
+          <b>${escapeHtml(part.name)}</b>
+          <span>${escapeHtml(part.colorName)} · for issue ${issue.number}${part.certain ? '' : ' · closest match'}</span>
+        </div>
+        <div class="parts-code">${code}</div>
+        <a href="https://www.bricklink.com/v2/catalog/catalogitem.page?P=${encodeURIComponent(part.partNum)}" target="_blank" rel="noopener noreferrer">Find it →</a>
+      </li>`;
+    }).join('')}</ul>`;
+  } else if (partsSource === 'catalogue') {
+    // "Nothing to order" and "couldn't match it" are different answers, and
+    // conflating them would tell someone with a missing brick that they need
+    // nothing. Matching declines rather than guesses, so this happens.
+    const needsParts = (issues || []).some(i => i.type === 'MISSING PIECE' || i.type === 'WRONG PIECE');
+    body = needsParts
+      ? '<p class="parts-empty">Couldn\'t match these issues to specific parts in the set — the descriptions above are your best guide.</p>'
+      : '<p class="parts-empty">No missing or wrong pieces to order for this build.</p>';
+  } else {
+    // Set known but no catalogue available: link out rather than guess.
+    body = `<p class="parts-empty">Exact part codes aren't configured on this server, but you can browse every piece in this set.</p>
+      <a class="parts-browse" href="https://rebrickable.com/sets/${encodeURIComponent(set.number)}-1/" target="_blank" rel="noopener noreferrer">Browse the parts list for ${escapeHtml(set.number)} →</a>`;
+  }
+
+  panel.hidden = false;
+  panel.innerHTML = `<div class="parts-heading"><h3>Bricks you need</h3><span>${setLabel}${stepLabel}</span></div>${body}`;
 }
 
 function escapeHtml(value) {

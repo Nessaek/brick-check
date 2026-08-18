@@ -32,9 +32,12 @@ ENV PORT=3000 \
     NODE_ENV=production
 
 # Provide these at runtime, never in the image:
-#   ANTHROPIC_API_KEY  required
-#   APP_PASSWORD       shared password; without it the app is open to anyone
-#   CLAUDE_MODEL       optional, defaults to claude-sonnet-5
+#   ANTHROPIC_API_KEY   required
+#   APP_PASSWORD        shared password; without it the app is open to anyone
+#   CLAUDE_MODEL        optional, defaults to claude-sonnet-5
+#   REBRICKABLE_API_KEY optional; enables exact brick codes from an uploaded
+#                       instruction page. Absent, the app names no part codes
+#                       rather than guessing them.
 #
 # The app holds no state, so no volume is needed. Spend is capped by the
 # limit set on the Anthropic account, which is authoritative and cannot be

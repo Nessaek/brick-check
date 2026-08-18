@@ -246,3 +246,43 @@ button:focus-visible, .upload-zone:focus-within, a:focus-visible {
     transition-duration: .001ms !important;
   }
 }
+
+/* ---- Bricks you need -------------------------------------------------- */
+/* Only ever rendered when a set number was read off an instruction page, so
+   everything here is an enhancement rather than part of the default result. */
+.parts-panel {
+  margin-top: 22px;
+  padding: 22px 24px;
+  background: var(--panel, #fff);
+  border: 1px solid rgba(25, 37, 31, 0.1);
+  border-radius: 18px;
+}
+.parts-heading { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.parts-heading h3 { margin: 0; font-size: 1.05rem; }
+.parts-heading span { font-family: 'DM Mono', ui-monospace, monospace; font-size: 0.78rem; color: #19251f8c; }
+.parts-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.parts-list li {
+  display: grid;
+  grid-template-columns: 44px 1fr auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px;
+  background: #19251f08;
+  border-radius: 12px;
+}
+.parts-list img, .parts-thumb-blank { width: 44px; height: 44px; object-fit: contain; border-radius: 8px; background: #fff; }
+.parts-list b { display: block; font-size: 0.9rem; }
+.parts-list span { font-size: 0.76rem; color: #19251f8c; }
+.parts-code { text-align: right; font-family: 'DM Mono', ui-monospace, monospace; }
+.parts-code b { font-size: 0.95rem; letter-spacing: 0.02em; }
+.parts-code span { display: block; font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.08em; }
+.parts-list a, .parts-browse {
+  font-size: 0.8rem; font-weight: 600; text-decoration: none;
+  color: var(--brick-blue, #0057a6); white-space: nowrap;
+}
+.parts-empty { margin: 0 0 10px; font-size: 0.88rem; color: #19251f99; }
+
+@media (max-width: 620px) {
+  .parts-list li { grid-template-columns: 36px 1fr auto; }
+  .parts-list a { grid-column: 2 / -1; }
+}

@@ -136,6 +136,7 @@ The image has been built and run for `linux/amd64` with OpenCV 5.0 working insid
 | --- | --- |
 | `ANTHROPIC_API_KEY` | Required. Don't bake it into the image. |
 | `APP_PASSWORD` | Shared password (HTTP Basic). Unset means no authentication and anyone who can reach the server can spend your API credit. |
+| `REBRICKABLE_API_KEY` | Optional. Enables exact brick codes for issues when an instruction page carries a printed set number. Unset, the app links to the set's parts list instead of naming codes. |
 | `TRUST_PROXY` | Set to `1` only behind a load balancer that sets `X-Forwarded-For`. The Dockerfile defaults it on; unset it if the container is exposed directly, or the rate limit can be spoofed. |
 | `HOST` | Bind address, default `0.0.0.0`. Use `127.0.0.1` to keep it off the local network. |
 | `PORT`, `CLAUDE_MODEL` | Optional. |
@@ -181,6 +182,16 @@ To add a case, photograph a build complete, remove or swap a piece, photograph i
 ### Current results
 
 Nine cases: a generated framed mosaic, two LEGO Botanicals plants, and a pink creature compared against its product photo.
+
+## Instruction pages and brick codes
+
+Uploading an instruction page instead of a photo is optional and changes two things.
+
+The page is read first, for the set number, step number and printed parts callout, and that context is added to the comparison prompt — the callout in particular tells the model which pieces are meant to exist *at this step*, so a piece belonging to a later step is not reported missing.
+
+If `REBRICKABLE_API_KEY` is set and a set number was printed on the page, the set's real inventory is fetched and each missing or wrong piece is matched against it. The match is constrained by building the tool schema's `enum` from that inventory, so a part number that is not in your set cannot be returned at all. Element IDs (part + colour) are shown where available, since that is what LEGO's own replacement-parts service takes; design IDs otherwise.
+
+What it will not do is guess a set number from a photo of the model. Measured on this repo's own images, that returned `unknown` on three of three attempts for one photo and two *different* wrong set numbers for another, both at medium confidence — and one of those wrong numbers is a real set, so checking that the number resolves would not have caught it. A printed number is read; an unprinted one is left alone.
 
 Across five runs of identical code the suite scored anywhere from 4/9 to 7/9 cases, 4–8 defects caught, and 2–3 false positives. **A single run tells you very little** — the 4/9 and a 7/9 were consecutive runs with no changes between them. Judge changes on two or three runs, and treat one case flipping as noise until it repeats.
 

@@ -279,6 +279,99 @@ const SCAN_INSTRUCTION = 'Work methodically: mentally divide image 1 into a 3x3 
 // this guard the model reports parts hidden by the camera angle as missing.
 const VIEWPOINT_GUARD = 'Important: the two photos may be taken from different angles, distances, or sides, so some parts may be hidden or newly visible purely because of the viewpoint — that is NOT a defect. Report only differences in the physical build itself, and if you cannot tell whether a difference is physical or just perspective/lighting, do not report it. Worked example of this reasoning: the reference shows a model from the front, with two side arms and a printed face visible; the build photo is a close-up from behind, where the face is on the far side and the arms are at the edge of the frame or cut off. Wrong: "add missing arms", "add missing face" — those parts are simply not in view. Right: first ask "would this part even be visible from this camera position?" — only if the answer is yes and the part is still absent is it a real issue.';
 
+// Reading an instruction page is a different and far more reliable operation
+// than recognising a set from a photo of the finished model. Measured on this
+// repo's own photos, identification-from-photo returned "unknown" three times
+// out of three on one image and two DIFFERENT wrong set numbers on another,
+// both at medium confidence — and one of those wrong numbers is a real set,
+// so a catalogue existence check would have waved it through. A printed set
+// number on a booklet cover is text to be read, not trivia to be recalled,
+// so the prompt below pushes hard toward reading and toward "unknown".
+const INSTRUCTION_TOOL = {
+  name: 'read_instruction_page',
+  description: 'Report what is printed on a LEGO instruction booklet page.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      setNumber: {
+        type: 'string',
+        description: 'The official set number printed on the page, digits only (e.g. "10349"). Use "unknown" unless you can literally SEE it printed.'
+      },
+      setName: { type: 'string', description: 'Set name if printed, else "unknown".' },
+      stepNumber: { type: 'string', description: 'The build step number shown, else "unknown".' },
+      // Flat strings, not objects. With {description, quantity} items the model
+      // returned the WHOLE payload JSON-encoded into this one property on 2 of
+      // 3 trials, burying setNumber where nothing could read it. A nested
+      // array-of-objects beside plain scalars was apparently enough to tip it.
+      partsCallout: {
+        type: 'array',
+        maxItems: 12,
+        description: 'The parts box printed on the page, one entry per row, e.g. "2x blue 2x4 plate".',
+        items: { type: 'string' }
+      },
+      readable: { type: 'boolean', description: 'False if this does not look like an instruction page at all.' }
+    },
+    required: ['setNumber', 'readable']
+  }
+};
+
+const INSTRUCTION_PROMPT = 'This image should be a page from a LEGO instruction booklet. Report only what is PRINTED on the page — read it, do not infer it from the model shown. The set number is usually on the cover or in a corner, often near the LEGO logo. If you cannot literally see a set number printed in the image, return "unknown"; do not deduce it from recognising the model, because that guess is wrong more often than it is right. Do the same for the step number and set name. If a parts callout box is printed on the page, list its contents. If this is not an instruction page at all, set readable to false.';
+
+// Models occasionally answer a tool call by JSON-encoding the entire intended
+// payload into a single string property instead of filling the fields. Seen on
+// 2 of 3 trials against an earlier version of this schema, and the failure is
+// silent: the call succeeds, the fields read as absent, and the feature just
+// appears not to work. Simplifying the schema made it rare; this makes it
+// harmless.
+function unwrapToolInput(input) {
+  if (input && typeof input === 'object' && !Array.isArray(input)) {
+    for (const value of Object.values(input)) {
+      if (typeof value !== 'string' || !value.trim().startsWith('{')) continue;
+      try {
+        const parsed = JSON.parse(value);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return { ...input, ...parsed };
+      } catch { /* not JSON — the property is just a string */ }
+    }
+  }
+  return input;
+}
+
+// Only runs when the user explicitly chose "upload instruction page", so the
+// extra call is opt-in and the default flow costs exactly what it did before.
+async function readInstructionPage(referenceImage) {
+  try {
+    const parsed = parseDataUrl(referenceImage);
+    if (!parsed) return null;
+    const toolUse = await callClaude([
+      { type: 'image', source: { type: 'base64', media_type: parsed.mimeType, data: parsed.data } },
+      { type: 'text', text: INSTRUCTION_PROMPT }
+    ], false, INSTRUCTION_TOOL);
+    if (!toolUse?.input) return null;
+    const input = unwrapToolInput(toolUse.input);
+    if (input.readable === false) return null;
+
+    const clean = value => {
+      const text = String(value ?? '').trim();
+      return !text || /^unknown$/i.test(text) ? null : text;
+    };
+    const setNumber = clean(input.setNumber);
+    return {
+      // Set numbers are digits, sometimes with a -1 variant suffix. Anything
+      // else is the model narrating rather than reading.
+      setNumber: setNumber && /^\d{3,7}(-\d+)?$/.test(setNumber) ? setNumber.split('-')[0] : null,
+      setName: clean(input.setName),
+      stepNumber: clean(input.stepNumber),
+      partsCallout: Array.isArray(input.partsCallout)
+        ? input.partsCallout.map(p => (typeof p === 'string' ? p : p?.description)).filter(Boolean).slice(0, 12)
+        : []
+    };
+  } catch {
+    // An unreadable instruction page must never fail the analysis — the whole
+    // feature is an optional enhancement on top of the normal comparison.
+    return null;
+  }
+}
+
 const VERIFY_TOOL = {
   name: 'verify_build_issues',
   description: 'Return a verdict for each candidate issue after inspecting the zoomed crops.',
@@ -404,8 +497,142 @@ async function verifyIssues(issues, image, referenceToSend, aligned) {
   }
 }
 
-function buildPrompt() {
-  return `You are an expert LEGO build reviewer. Image 1 is the user's current build. Image 2 is the correct reference or instruction step. Compare them carefully and list every visible difference: missing pieces, wrong pieces, wrong colors, wrong orientation, or pieces in the wrong place. ${VIEWPOINT_GUARD} Describe each fix using the actual colors, shapes, and locations you see in the photos. Only report issues you can clearly see. ${SCAN_INSTRUCTION} If the build matches the reference, call the tool with an empty issues array.`;
+// Set inventories are static reference data, so one fetch per set per process
+// is plenty. The app holds no other state; losing this on restart just means
+// refetching.
+const inventoryCache = new Map();
+const REBRICKABLE_KEY = process.env.REBRICKABLE_API_KEY || '';
+
+async function fetchSetInventory(setNumber) {
+  if (!REBRICKABLE_KEY || !setNumber) return null;
+  if (inventoryCache.has(setNumber)) return inventoryCache.get(setNumber);
+  try {
+    // Rebrickable set numbers carry a variant suffix; "-1" is the standard one.
+    const url = `https://rebrickable.com/api/v3/lego/sets/${encodeURIComponent(setNumber)}-1/parts/?page_size=1000&inc_minifig_parts=0`;
+    const response = await fetch(url, {
+      headers: { Authorization: `key ${REBRICKABLE_KEY}`, Accept: 'application/json' },
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok) {
+      inventoryCache.set(setNumber, null);
+      return null;
+    }
+    const payload = await response.json();
+    const parts = (payload.results || [])
+      .filter(row => row && row.part && !row.is_spare)
+      .map(row => ({
+        partNum: String(row.part.part_num),
+        name: String(row.part.name || ''),
+        colorName: String(row.color?.name || ''),
+        elementId: row.element_id ? String(row.element_id) : null,
+        quantity: row.quantity || 1,
+        imageUrl: row.part.part_img_url || null
+      }));
+    const result = parts.length ? parts : null;
+    inventoryCache.set(setNumber, result);
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+// The enum is the whole point. Asked to recall a part number the model invents
+// plausible ones; asked to pick from this set's actual inventory it is making a
+// multiple-choice selection, and anything off-list is rejected by the API
+// before it can reach the user. A wrong answer becomes "wrong part from your
+// set", which a thumbnail makes obvious, instead of a number that buys the
+// wrong brick.
+function buildPartsTool(inventory) {
+  const partNums = [...new Set(inventory.map(p => p.partNum))].slice(0, 400);
+  return {
+    tool: {
+      name: 'identify_parts',
+      description: 'Match each reported build issue to the part from this set that it concerns.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          matches: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                number: { type: 'integer', description: 'The issue number being matched' },
+                partNum: { type: 'string', enum: partNums, description: 'The part from this set involved in this issue' },
+                colorName: { type: 'string', description: 'Colour name exactly as listed in the inventory below' },
+                certain: { type: 'boolean', description: 'False if this is a best guess among similar parts' }
+              },
+              required: ['number', 'partNum']
+            }
+          }
+        },
+        required: ['matches']
+      }
+    },
+    partNums
+  };
+}
+
+async function identifyParts(issues, inventory) {
+  const wanted = issues.filter(i => i.type === 'MISSING PIECE' || i.type === 'WRONG PIECE');
+  if (!wanted.length || !inventory?.length) return [];
+  try {
+    const { tool, partNums } = buildPartsTool(inventory);
+    const allowed = new Set(partNums);
+    const catalogue = inventory
+      .filter(p => allowed.has(p.partNum))
+      .map(p => `${p.partNum} | ${p.name} | ${p.colorName} | qty ${p.quantity}`)
+      .join('\n');
+
+    const toolUse = await callClaude([{
+      type: 'text',
+      text: `A LEGO build was checked against its reference and these issues were found:\n\n${
+        wanted.map(i => `Issue ${i.number}: [${i.type}] ${i.title} — ${i.detail}`).join('\n')
+      }\n\nBelow is the complete parts inventory of the set, as "part number | name | colour | quantity":\n\n${catalogue}\n\nFor each issue, pick the inventory part it concerns, matching on shape AND colour. Only include an issue if a part in the list plausibly matches it; leave it out entirely rather than forcing a match, and set certain to false when several parts would fit.`
+    }], false, tool);
+
+    const matches = Array.isArray(toolUse?.input?.matches) ? toolUse.input.matches : [];
+    return matches.map(match => {
+      // Prefer the row whose colour the model named, so the element ID (part +
+      // colour) is the one you can actually order.
+      const rows = inventory.filter(p => p.partNum === match.partNum);
+      const row = rows.find(p => p.colorName.toLowerCase() === String(match.colorName || '').toLowerCase()) || rows[0];
+      if (!row) return null;
+      return {
+        number: match.number,
+        partNum: row.partNum,
+        elementId: row.elementId,
+        name: row.name,
+        colorName: row.colorName,
+        imageUrl: row.imageUrl,
+        certain: match.certain !== false
+      };
+    }).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function buildPrompt(instructions) {
+  // Everything the instruction page told us is appended as extra grounding.
+  // The comparison itself is unchanged, so a build with no instruction page
+  // behaves exactly as before.
+  let context = '';
+  if (instructions) {
+    const bits = [];
+    if (instructions.setName || instructions.setNumber) {
+      bits.push(`the set is ${[instructions.setName, instructions.setNumber].filter(Boolean).join(' ')}`);
+    }
+    if (instructions.stepNumber) bits.push(`image 2 shows build step ${instructions.stepNumber}`);
+    if (instructions.partsCallout?.length) {
+      bits.push(`the printed parts callout for this step lists: ${
+        instructions.partsCallout.map(p => `${p.quantity ? p.quantity + 'x ' : ''}${p.description}`).join(', ')
+      }`);
+    }
+    if (bits.length) {
+      context = ` Additional context read from the instruction page: ${bits.join('; ')}. Use the callout to judge which pieces should be present at this step — a piece that belongs to a LATER step is not missing.`;
+    }
+  }
+  return `You are an expert LEGO build reviewer. Image 1 is the user's current build. Image 2 is the correct reference or instruction step.${context} Compare them carefully and list every visible difference: missing pieces, wrong pieces, wrong colors, wrong orientation, or pieces in the wrong place. ${VIEWPOINT_GUARD} Describe each fix using the actual colors, shapes, and locations you see in the photos. Only report issues you can clearly see. ${SCAN_INSTRUCTION} If the build matches the reference, call the tool with an empty issues array.`;
 }
 
 async function callClaude(content, forceTool, tool = REPORT_ISSUES_TOOL) {
@@ -432,12 +659,16 @@ async function callClaude(content, forceTool, tool = REPORT_ISSUES_TOOL) {
   return payload.content?.find(block => block.type === 'tool_use' && block.name === tool.name) || null;
 }
 
-async function analyse(image, referenceImage) {
+async function analyse(image, referenceImage, referenceKind) {
   if (!image) throw new Error('Please upload a photo of your build first.');
   if (!referenceImage) throw new Error('Please add a reference photo showing how the build should look.');
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new Error('Anthropic API key not configured. Copy .env.example to .env, add ANTHROPIC_API_KEY, then restart the server.');
   }
+
+  // Opt-in: only when the user chose "upload instruction page". Costs one
+  // extra call, and every downstream use of it degrades to nothing if it fails.
+  const instructions = referenceKind === 'instructions' ? await readInstructionPage(referenceImage) : null;
 
   let aligned = false;
   let alignReason = null;
@@ -459,7 +690,7 @@ async function analyse(image, referenceImage) {
     }
   }
 
-  const content = [{ type: 'text', text: buildPrompt() }];
+  const content = [{ type: 'text', text: buildPrompt(instructions) }];
 
   const mainImage = parseDataUrl(image);
   if (!SUPPORTED_MEDIA_TYPES.has(mainImage.mimeType)) {
@@ -513,12 +744,31 @@ async function analyse(image, referenceImage) {
   const firstPass = normalizeIssues(toolUse.input?.issues);
   const { issues, verified, rejected } = await verifyIssues(firstPass, image, referenceToSend, aligned);
 
+  // Parts identification runs last, on confirmed issues only, and never
+  // touches detection. If there is no set number, no API key, or no match, the
+  // result is simply an analysis without part codes.
+  const inventory = await fetchSetInventory(instructions?.setNumber);
+  const parts = inventory ? await identifyParts(issues, inventory) : [];
+  const partByIssue = new Map(parts.map(p => [p.number, p]));
+  for (const issue of issues) {
+    const part = partByIssue.get(issue.number);
+    if (part) issue.part = part;
+  }
+
   return {
     issues,
     verified,
     mode: 'live',
     aligned,
     alignReason,
+    // Null unless an instruction page was uploaded AND a set number was
+    // literally printed on it. Never inferred from the model in the photo.
+    set: instructions?.setNumber
+      ? { number: instructions.setNumber, name: instructions.setName || null, step: instructions.stepNumber || null }
+      : null,
+    // 'catalogue' means every code came from the set's real inventory.
+    // 'none' means we could not look parts up, and the UI must not invent any.
+    partsSource: inventory ? 'catalogue' : 'none',
     // When alignment succeeded, the warped reference shares the build photo's
     // coordinate system — the client uses it to crop matching "yours vs
     // target" regions around each issue.
@@ -538,7 +788,7 @@ http.createServer(async (req, res) => {
     if (rateLimited(clientIp(req))) {
       return send(res, 429, { error: 'Too many analyses in a short time — wait a minute and try again.' });
     }
-    try { const { image, referenceImage } = await readBody(req); return send(res, 200, await analyse(image, referenceImage)); }
+    try { const { image, referenceImage, referenceKind } = await readBody(req); return send(res, 200, await analyse(image, referenceImage, referenceKind)); }
     catch (error) {
       send(res, error.statusCode || 400, { error: error.message });
       // An over-sized upload was paused rather than read to completion —
@@ -563,6 +813,9 @@ http.createServer(async (req, res) => {
   console.log(alignmentAvailable
     ? 'Image processing enabled — photo alignment, coordinate grid and zoomed issue verification are all active.'
     : 'Image processing DISABLED (python3/opencv/scikit-image not found) — alignment, the coordinate grid and issue verification are all off, which markedly reduces accuracy. Install preprocess/requirements.txt to enable them.');
+  console.log(REBRICKABLE_KEY
+    ? 'Brick codes enabled — an uploaded instruction page with a printed set number will list the exact parts to order.'
+    : 'Brick codes disabled (no REBRICKABLE_API_KEY) — instruction pages still improve the check, but issues will link to a parts search instead of naming exact codes.');
   console.log(APP_PASSWORD
     ? 'Password protection enabled (APP_PASSWORD).'
     : 'No APP_PASSWORD set — anyone who can reach this server can spend your API credit. Set one before exposing it beyond localhost.');
