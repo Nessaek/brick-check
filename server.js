@@ -536,18 +536,29 @@ async function fetchSetInventory(setNumber) {
   }
 }
 
-// The enum is the whole point. Asked to recall a part number the model invents
-// plausible ones; asked to pick from this set's actual inventory it is making a
-// multiple-choice selection, and anything off-list is rejected by the API
-// before it can reach the user. A wrong answer becomes "wrong part from your
-// set", which a thumbnail makes obvious, instead of a number that buys the
-// wrong brick.
+// Two ideas here, and the second was measured rather than assumed.
+//
+// The enum is what stops invention. Asked to recall a part number the model
+// makes up plausible ones; asked to choose from this set's actual inventory it
+// is answering multiple choice, and anything off-list is rejected by the API
+// before it reaches the user.
+//
+// Asking for a SHORTLIST rather than one answer is what makes it accurate.
+// Forced to commit to a single part it was wrong 4 times out of 4 on a missing
+// drum foot, picking a thin dark-blue plate for a tall pale-blue brick. Asked
+// for up to three candidates, the right part appeared 3 times out of 4 and was
+// ranked first every one of those times — same model, same inventory, same
+// issue text. Committing is the hard part; ranking is not. The user settles it
+// from thumbnails in a second.
+//
+// Passing the build photo into this pass was tried twice and made it worse
+// (2/4, the failures being empty answers), so this stays text-only.
 function buildPartsTool(inventory) {
   const partNums = [...new Set(inventory.map(p => p.partNum))].slice(0, 400);
   return {
     tool: {
-      name: 'identify_parts',
-      description: 'Match each reported build issue to the part from this set that it concerns.',
+      name: 'shortlist_parts',
+      description: 'Shortlist the parts from this set that each reported issue could concern.',
       input_schema: {
         type: 'object',
         properties: {
@@ -557,11 +568,15 @@ function buildPartsTool(inventory) {
               type: 'object',
               properties: {
                 number: { type: 'integer', description: 'The issue number being matched' },
-                partNum: { type: 'string', enum: partNums, description: 'The part from this set involved in this issue' },
-                colorName: { type: 'string', description: 'Colour name exactly as listed in the inventory below' },
-                certain: { type: 'boolean', description: 'False if this is a best guess among similar parts' }
+                candidates: {
+                  type: 'array',
+                  minItems: 1,
+                  maxItems: 3,
+                  description: 'Up to 3 candidate parts from this set, most likely first.',
+                  items: { type: 'string', enum: partNums }
+                }
               },
-              required: ['number', 'partNum']
+              required: ['number', 'candidates']
             }
           }
         },
@@ -587,25 +602,29 @@ async function identifyParts(issues, inventory) {
       type: 'text',
       text: `A LEGO build was checked against its reference and these issues were found:\n\n${
         wanted.map(i => `Issue ${i.number}: [${i.type}] ${i.title} — ${i.detail}`).join('\n')
-      }\n\nBelow is the complete parts inventory of the set, as "part number | name | colour | quantity":\n\n${catalogue}\n\nFor each issue, pick the inventory part it concerns, matching on shape AND colour. Only include an issue if a part in the list plausibly matches it; leave it out entirely rather than forcing a match, and set certain to false when several parts would fit.`
+      }\n\nBelow is the complete parts inventory of the set, as "part number | name | colour | quantity":\n\n${catalogue}\n\nFor each issue, shortlist up to 3 inventory parts it could be, most likely first. Match on shape, colour and quantity — a symmetric pair is likely a part with quantity 2, a "Brick Round" is tall where a "Plate Round" is thin and a "Tile Round" has no stud, and colours that read similarly in words ("Blue" vs "Bright Light Blue") are different parts. Include every plausible candidate rather than committing to one; the user picks the right one from pictures.`
     }], false, tool);
 
     const matches = Array.isArray(toolUse?.input?.matches) ? toolUse.input.matches : [];
     return matches.map(match => {
-      // Prefer the row whose colour the model named, so the element ID (part +
-      // colour) is the one you can actually order.
-      const rows = inventory.filter(p => p.partNum === match.partNum);
-      const row = rows.find(p => p.colorName.toLowerCase() === String(match.colorName || '').toLowerCase()) || rows[0];
-      if (!row) return null;
-      return {
-        number: match.number,
-        partNum: row.partNum,
-        elementId: row.elementId,
-        name: row.name,
-        colorName: row.colorName,
-        imageUrl: row.imageUrl,
-        certain: match.certain !== false
-      };
+      const candidates = Array.isArray(match.candidates) ? match.candidates : [];
+      const options = [];
+      for (const partNum of candidates.slice(0, 3)) {
+        // One part number can appear in several colours; each colour is a
+        // different element ID and a different thing to order, so offer them
+        // all and let the picture decide.
+        for (const row of inventory.filter(p => p.partNum === partNum)) {
+          if (options.some(o => o.elementId === row.elementId && o.partNum === row.partNum)) continue;
+          options.push({
+            partNum: row.partNum,
+            elementId: row.elementId,
+            name: row.name,
+            colorName: row.colorName,
+            imageUrl: row.imageUrl
+          });
+        }
+      }
+      return options.length ? { number: match.number, options: options.slice(0, 4) } : null;
     }).filter(Boolean);
   } catch {
     return [];
@@ -751,8 +770,11 @@ async function analyse(image, referenceImage, referenceKind) {
   const parts = inventory ? await identifyParts(issues, inventory) : [];
   const partByIssue = new Map(parts.map(p => [p.number, p]));
   for (const issue of issues) {
-    const part = partByIssue.get(issue.number);
-    if (part) issue.part = part;
+    const match = partByIssue.get(issue.number);
+    // A ranked shortlist, best first — not an answer. The UI presents these as
+    // candidates to pick between, because committing to one is the step the
+    // model measurably cannot do.
+    if (match) issue.parts = match.options;
   }
 
   return {

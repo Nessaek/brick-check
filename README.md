@@ -189,7 +189,13 @@ Uploading an instruction page instead of a photo is optional and changes two thi
 
 The page is read first, for the set number, step number and printed parts callout, and that context is added to the comparison prompt — the callout in particular tells the model which pieces are meant to exist *at this step*, so a piece belonging to a later step is not reported missing.
 
-If `REBRICKABLE_API_KEY` is set and a set number was printed on the page, the set's real inventory is fetched and each missing or wrong piece is matched against it. The match is constrained by building the tool schema's `enum` from that inventory, so a part number that is not in your set cannot be returned at all. Element IDs (part + colour) are shown where available, since that is what LEGO's own replacement-parts service takes; design IDs otherwise.
+If `REBRICKABLE_API_KEY` is set and a set number was printed on the page, the set's real inventory is fetched and each missing or wrong piece is matched against it. Two things make that work.
+
+The tool schema's `enum` is built from that inventory, so a part number that is not in your set cannot be returned at all.
+
+And it returns a ranked **shortlist**, not an answer. Forced to name one part it was wrong on 4 of 4 attempts at a missing drum foot, choosing a thin dark-blue plate for a tall pale-blue brick. Asked for up to three candidates it included the right part on 3 of 4 and ranked it first every time. Committing is the hard part; ranking is not — so the UI shows the candidates as thumbnails and you pick, which takes about a second. Passing the build photo into this pass was tried and measured worse (2 of 4, the failures being empty answers), so it stays text-only.
+
+Element IDs (part + colour) are shown where available, since that is what LEGO's own replacement-parts service takes; design IDs otherwise. One part number can appear in several colours in the same set, and each is a different element ID, so the colours are offered as separate candidates.
 
 What it will not do is guess a set number from a photo of the model. Measured on this repo's own images, that returned `unknown` on three of three attempts for one photo and two *different* wrong set numbers for another, both at medium confidence — and one of those wrong numbers is a real set, so checking that the number resolves would not have caught it. A printed number is read; an unprinted one is left alone.
 

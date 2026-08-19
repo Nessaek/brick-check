@@ -14,6 +14,7 @@ let previewUrl = '';
 const referenceUpload = document.querySelector('#reference-upload');
 const instructionUpload = document.querySelector('#instruction-upload');
 let referenceKind = 'photo';
+let lastIssues = [];
 const imageExtensions = /\.(jpe?g|png|gif|webp|heic|heif|bmp|avif)$/i;
 
 function isImageFile(file) {
@@ -173,6 +174,7 @@ analyze.addEventListener('click', async () => {
     if (!response.ok) throw new Error(data.error || 'Analysis failed.');
     alignedReference = data.alignedReference || '';
     renderIssues(data.issues, data.mode, data.aligned, data.alignReason, data.verified);
+    lastIssues = data.issues || [];
     renderParts(data.issues, data.set, data.partsSource);
   } catch (error) {
     renderIssues([], 'error');
@@ -304,10 +306,15 @@ function severityClass(type = '') {
 // The shopping list. Deliberately shows nothing at all unless a set number was
 // read off an instruction page — a plausible-looking wrong part code is worse
 // than no code, because the user finds out by receiving the wrong brick.
+//
+// Candidates, not answers. Asked to name one part the model was wrong every
+// time on a test defect; asked to rank three it put the right one first. So
+// the pictures go to the user and the user decides — the part of this that a
+// human does instantly and the model does badly.
 function renderParts(issues, set, partsSource) {
   const panel = document.querySelector('#parts-panel');
   if (!panel) return;
-  const list = (issues || []).filter(issue => issue.part);
+  const list = (issues || []).filter(issue => issue.parts && issue.parts.length);
 
   if (!set) {
     panel.hidden = true;
@@ -315,48 +322,77 @@ function renderParts(issues, set, partsSource) {
     return;
   }
 
-  const setLabel = escapeHtml([set.name, set.number].filter(Boolean).join(' · '));
-  const stepLabel = set.step ? ` · step ${escapeHtml(set.step)}` : '';
+  const setLabel = escapeHtml([set.name, set.number].filter(Boolean).join(' \u00b7 '));
+  const stepLabel = set.step ? ` \u00b7 step ${escapeHtml(set.step)}` : '';
   let body;
 
   if (list.length) {
     body = `<ul class="parts-list">${list.map(issue => {
-      const part = issue.part;
-      // Element ID is part + colour, and is what LEGO's own replacement
-      // service takes. The design ID alone does not specify a colour.
-      const code = part.elementId
-        ? `<b>${escapeHtml(part.elementId)}</b><span>element ID</span>`
-        : `<b>${escapeHtml(part.partNum)}</b><span>design ID</span>`;
-      const thumb = part.imageUrl
-        ? `<img src="${escapeHtml(part.imageUrl)}" alt="" loading="lazy" />`
-        : '<span class="parts-thumb-blank"></span>';
-      return `<li>
-        ${thumb}
-        <div>
-          <b>${escapeHtml(part.name)}</b>
-          <span>${escapeHtml(part.colorName)} · for issue ${issue.number}${part.certain ? '' : ' · closest match'}</span>
+      const options = issue.parts;
+      const picker = options.map((part, index) => `
+        <button class="part-option ${index === 0 ? 'selected' : ''}" data-issue="${issue.number}" data-index="${index}"
+                title="${escapeHtml(`${part.name} — ${part.colorName}`)}" aria-pressed="${index === 0}">
+          ${part.imageUrl ? `<img src="${escapeHtml(part.imageUrl)}" alt="${escapeHtml(part.name)}" loading="lazy" />` : '<span class="parts-thumb-blank"></span>'}
+        </button>`).join('');
+      return `<li data-issue="${issue.number}">
+        <div class="part-options">${picker}</div>
+        <div class="part-detail">
+          <b></b>
+          <span></span>
         </div>
-        <div class="parts-code">${code}</div>
-        <a href="https://www.bricklink.com/v2/catalog/catalogitem.page?P=${encodeURIComponent(part.partNum)}" target="_blank" rel="noopener noreferrer">Find it →</a>
+        <div class="parts-code"></div>
+        <a href="#" target="_blank" rel="noopener noreferrer">Find it \u2192</a>
       </li>`;
-    }).join('')}</ul>`;
+    }).join('')}</ul>
+    <p class="parts-note">${list.length === 1 ? 'One piece' : `${list.length} pieces`} to replace. Tap a picture if a different one matches your brick.</p>`;
   } else if (partsSource === 'catalogue') {
     // "Nothing to order" and "couldn't match it" are different answers, and
     // conflating them would tell someone with a missing brick that they need
     // nothing. Matching declines rather than guesses, so this happens.
     const needsParts = (issues || []).some(i => i.type === 'MISSING PIECE' || i.type === 'WRONG PIECE');
     body = needsParts
-      ? '<p class="parts-empty">Couldn\'t match these issues to specific parts in the set — the descriptions above are your best guide.</p>'
+      ? '<p class="parts-empty">Couldn\'t narrow these down to specific parts \u2014 browse the set\'s inventory below.</p>'
+        + `<a class="parts-browse" href="https://rebrickable.com/sets/${encodeURIComponent(set.number)}-1/" target="_blank" rel="noopener noreferrer">Browse every part in ${escapeHtml(set.number)} \u2192</a>`
       : '<p class="parts-empty">No missing or wrong pieces to order for this build.</p>';
   } else {
-    // Set known but no catalogue available: link out rather than guess.
-    body = `<p class="parts-empty">Exact part codes aren't configured on this server, but you can browse every piece in this set.</p>
-      <a class="parts-browse" href="https://rebrickable.com/sets/${encodeURIComponent(set.number)}-1/" target="_blank" rel="noopener noreferrer">Browse the parts list for ${escapeHtml(set.number)} →</a>`;
+    body = `<p class="parts-empty">Exact part codes aren\'t configured on this server, but you can browse every piece in this set.</p>
+      <a class="parts-browse" href="https://rebrickable.com/sets/${encodeURIComponent(set.number)}-1/" target="_blank" rel="noopener noreferrer">Browse the parts list for ${escapeHtml(set.number)} \u2192</a>`;
   }
 
   panel.hidden = false;
   panel.innerHTML = `<div class="parts-heading"><h3>Bricks you need</h3><span>${setLabel}${stepLabel}</span></div>${body}`;
+  list.forEach(issue => selectPart(issue, 0));
 }
+
+// Writes the chosen candidate into its row. Element ID is part + colour, and
+// is what LEGO's own replacement service takes; a design ID alone does not
+// specify a colour, so it is only the fallback.
+function selectPart(issue, index) {
+  const row = document.querySelector(`.parts-list li[data-issue="${issue.number}"]`);
+  if (!row) return;
+  const part = issue.parts[index];
+  if (!part) return;
+  row.querySelector('.part-detail b').textContent = part.name;
+  row.querySelector('.part-detail span').textContent = `${part.colorName} \u00b7 for issue ${issue.number}`;
+  row.querySelector('.parts-code').innerHTML = part.elementId
+    ? `<b>${escapeHtml(part.elementId)}</b><span>element ID</span>`
+    : `<b>${escapeHtml(part.partNum)}</b><span>design ID</span>`;
+  row.querySelector('a').href = `https://www.bricklink.com/v2/catalog/catalogitem.page?P=${encodeURIComponent(part.partNum)}`;
+  row.querySelectorAll('.part-option').forEach((button, i) => {
+    button.classList.toggle('selected', i === index);
+    button.setAttribute('aria-pressed', String(i === index));
+  });
+}
+
+// One delegated listener, so it survives every re-render.
+document.addEventListener('click', event => {
+  const button = event.target.closest('.part-option');
+  if (!button) return;
+  event.preventDefault();
+  const issueNumber = Number(button.dataset.issue);
+  const issue = (lastIssues || []).find(i => i.number === issueNumber);
+  if (issue) selectPart(issue, Number(button.dataset.index));
+});
 
 function escapeHtml(value) {
   return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');

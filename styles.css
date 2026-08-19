@@ -263,14 +263,25 @@ button:focus-visible, .upload-zone:focus-within, a:focus-visible {
 .parts-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .parts-list li {
   display: grid;
-  grid-template-columns: 44px 1fr auto auto;
+  grid-template-columns: auto 1fr auto auto;
   align-items: center;
   gap: 14px;
   padding: 10px 12px;
   background: #19251f08;
   border-radius: 12px;
 }
-.parts-list img, .parts-thumb-blank { width: 44px; height: 44px; object-fit: contain; border-radius: 8px; background: #fff; }
+/* Candidates sit side by side so the choice is a glance, not a menu. */
+.part-options { display: flex; gap: 6px; }
+.part-option {
+  padding: 2px; border: 2px solid transparent; border-radius: 10px;
+  background: #fff; cursor: pointer; line-height: 0;
+  transition: border-color 120ms ease, transform 120ms ease;
+}
+.part-option:hover { transform: translateY(-1px); }
+.part-option.selected { border-color: var(--brick-blue, #0057a6); }
+.part-option:focus-visible { outline: 3px solid var(--brick-yellow, #f5c518); outline-offset: 2px; }
+.parts-list img, .parts-thumb-blank { width: 40px; height: 40px; object-fit: contain; border-radius: 8px; background: #fff; display: block; }
+.parts-note { margin: 12px 0 0; font-size: 0.78rem; color: #19251f8c; }
 .parts-list b { display: block; font-size: 0.9rem; }
 .parts-list span { font-size: 0.76rem; color: #19251f8c; }
 .parts-code { text-align: right; font-family: 'DM Mono', ui-monospace, monospace; }
@@ -283,6 +294,12 @@ button:focus-visible, .upload-zone:focus-within, a:focus-visible {
 .parts-empty { margin: 0 0 10px; font-size: 0.88rem; color: #19251f99; }
 
 @media (max-width: 620px) {
-  .parts-list li { grid-template-columns: 36px 1fr auto; }
-  .parts-list a { grid-column: 2 / -1; }
+  .parts-list li { grid-template-columns: 1fr auto; }
+  .part-options { grid-column: 1 / -1; }
+  .parts-list a { grid-column: 1 / -1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .part-option { transition: none; }
+  .part-option:hover { transform: none; }
 }
