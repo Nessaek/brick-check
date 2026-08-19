@@ -24,15 +24,29 @@ else
   APP_PASSWORD=""
 fi
 
+# Optional. Absent, the app runs exactly as before and simply names no brick
+# codes, so a missing parameter must not abort this script (set -e is on).
+REBRICKABLE_API_KEY="$(aws ssm get-parameter --name '${rebrickable_parameter}' --with-decryption --region '${region}' --query 'Parameter.Value' --output text 2>/dev/null || true)"
+if [ "$REBRICKABLE_API_KEY" = "None" ]; then REBRICKABLE_API_KEY=""; fi
+
 # Caddy needs a hostname to get a certificate for. With no domain of your own,
 # fall back to sslip.io, which resolves <ip>.sslip.io straight to <ip> — good
 # enough for Let's Encrypt to issue a real, publicly trusted certificate.
 SITE='${domain}'
 if [ -z "$SITE" ]; then
-  # IMDSv2 is required on this instance, so fetch a token first.
-  TOKEN=$(curl -sX PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
-  PUBLIC_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4)
-  SITE="$PUBLIC_IP.sslip.io"
+  # Prefer the Elastic IP passed in by Terraform. Reading the address from
+  # instance metadata instead would pick up the temporary one the box boots
+  # with, and the certificate would be issued for a hostname that stops
+  # resolving here the moment the Elastic IP is associated.
+  FIXED_IP='${fixed_ip}'
+  if [ -n "$FIXED_IP" ]; then
+    SITE="$FIXED_IP.sslip.io"
+  else
+    # IMDSv2 is required on this instance, so fetch a token first.
+    TOKEN=$(curl -sX PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
+    PUBLIC_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4)
+    SITE="$PUBLIC_IP.sslip.io"
+  fi
 fi
 echo "serving as $SITE"
 
@@ -40,6 +54,7 @@ install -m 600 /dev/null /etc/brickcheck.env
 cat > /etc/brickcheck.env <<EOF
 ANTHROPIC_API_KEY=$API_KEY
 APP_PASSWORD=$APP_PASSWORD
+REBRICKABLE_API_KEY=$REBRICKABLE_API_KEY
 # Correct here: Caddy terminates TLS and sets X-Forwarded-For, and the app
 # container publishes no host port, so requests cannot arrive any other way.
 TRUST_PROXY=1

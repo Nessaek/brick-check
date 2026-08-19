@@ -84,8 +84,10 @@ the setup script rebuilds the instance rather than silently doing nothing.
 
 Not included:
 
-- **A static address.** Stop/start gives the instance a new public IP. Add an
-  `aws_eip` if that matters.
+- **A domain of your own.** `use_elastic_ip` (default on) pins the public
+  address, so the sslip.io hostname stops moving; a real domain is still
+  nicer. The Elastic IP is free while attached and about £3/month if you stop
+  the instance and leave it allocated.
 - **A spend cap.** The app does not meter spend. Set a limit on the Anthropic
   account — that is the only control. This matters more with
   `require_password = false`, where that limit is the *only* thing bounding
@@ -111,6 +113,21 @@ deploys will target an instance that no longer exists:
 
 ```bash
 gh secret set AWS_INSTANCE_ID --body "$(tofu output -raw instance_id)"
+```
+
+## Brick codes (optional)
+
+`REBRICKABLE_API_KEY` lets the app name exact parts when someone uploads an
+instruction page with a printed set number. It is read from SSM like the other
+secrets, and it is genuinely optional: if the parameter does not exist the
+instance boots fine and the app simply shows no codes.
+
+Create it **before** `apply`, because user-data only runs at first boot — add
+it afterwards and the key will not reach the instance until the next rebuild:
+
+```bash
+aws ssm put-parameter --name /brickcheck/rebrickable_api_key \
+  --type SecureString --value 'your-key' --region eu-west-2
 ```
 
 ## HTTPS

@@ -99,6 +99,7 @@ resource "aws_iam_role_policy" "read_secrets" {
         Resource = [
           "arn:aws:ssm:${var.region}:*:parameter${var.api_key_parameter}",
           "arn:aws:ssm:${var.region}:*:parameter${var.app_password_parameter}",
+          "arn:aws:ssm:${var.region}:*:parameter${var.rebrickable_parameter}",
         ]
       },
       {
@@ -120,6 +121,21 @@ resource "aws_iam_instance_profile" "brickcheck" {
   role        = aws_iam_role.brickcheck.name
 }
 
+# Allocated before the instance so its address can go into user-data. The
+# hostname Caddy requests a certificate for is derived at first boot, so it has
+# to be the address the box will still have afterwards.
+resource "aws_eip" "brickcheck" {
+  count  = var.use_elastic_ip ? 1 : 0
+  domain = "vpc"
+  tags   = { Name = "brickcheck" }
+}
+
+resource "aws_eip_association" "brickcheck" {
+  count         = var.use_elastic_ip ? 1 : 0
+  instance_id   = aws_instance.brickcheck.id
+  allocation_id = aws_eip.brickcheck[0].id
+}
+
 resource "aws_instance" "brickcheck" {
   ami                    = data.aws_ssm_parameter.al2023_arm64.value
   instance_type          = var.instance_type
@@ -135,6 +151,8 @@ resource "aws_instance" "brickcheck" {
     repo_url               = var.repo_url
     api_key_parameter      = var.api_key_parameter
     app_password_parameter = var.app_password_parameter
+    rebrickable_parameter  = var.rebrickable_parameter
+    fixed_ip               = var.use_elastic_ip ? aws_eip.brickcheck[0].public_ip : ""
   })
 
   root_block_device {

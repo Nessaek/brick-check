@@ -54,3 +54,15 @@ variable "require_password" {
   type        = bool
   default     = true
 }
+
+variable "rebrickable_parameter" {
+  description = "SSM parameter holding the Rebrickable API key. Optional — if the parameter does not exist the app still runs, it just shows no brick codes."
+  type        = string
+  default     = "/brickcheck/rebrickable_api_key"
+}
+
+variable "use_elastic_ip" {
+  description = "Give the instance a fixed public address. Without this, stopping and starting changes the IP, which changes the sslip.io hostname and forces a new certificate."
+  type        = bool
+  default     = true
+}
