@@ -176,8 +176,10 @@ analyze.addEventListener('click', async () => {
     renderIssues(data.issues, data.mode, data.aligned, data.alignReason, data.verified);
     lastIssues = data.issues || [];
     renderParts(data.issues, data.set, data.partsSource);
+    showReportOption(data);
   } catch (error) {
     renderIssues([], 'error');
+    showReportOption(null);
     document.querySelector('.results-heading p').textContent = error.message;
   } finally {
     loading.classList.add('hidden');
@@ -392,6 +394,65 @@ document.addEventListener('click', event => {
   const issueNumber = Number(button.dataset.issue);
   const issue = (lastIssues || []).find(i => i.number === issueNumber);
   if (issue) selectPart(issue, Number(button.dataset.index));
+});
+
+// Reporting a wrong answer. This is the one path that shares the user's
+// photos, so it is opt-in, states plainly what it sends, and is hidden
+// entirely when the server has nowhere to put them.
+let lastAnalysis = null;
+
+function showReportOption(data) {
+  const panel = document.querySelector('#report-wrong');
+  if (!panel) return;
+  lastAnalysis = data;
+  panel.classList.toggle('hidden', !data || !data.feedback);
+  document.querySelector('#report-form').classList.add('hidden');
+  document.querySelector('#report-prompt-row').classList.remove('hidden');
+  document.querySelector('#report-status').classList.add('hidden');
+  document.querySelector('#report-note').value = '';
+}
+
+document.querySelector('#report-open').addEventListener('click', () => {
+  document.querySelector('#report-prompt-row').classList.add('hidden');
+  document.querySelector('#report-form').classList.remove('hidden');
+  document.querySelector('#report-note').focus();
+});
+
+document.querySelector('#report-cancel').addEventListener('click', () => {
+  document.querySelector('#report-form').classList.add('hidden');
+  document.querySelector('#report-prompt-row').classList.remove('hidden');
+});
+
+document.querySelector('#report-send').addEventListener('click', async () => {
+  const status = document.querySelector('#report-status');
+  const send = document.querySelector('#report-send');
+  if (!uploadedImage) return;
+  send.disabled = true;
+  send.textContent = 'Sending…';
+  try {
+    const response = await fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image: uploadedImage,
+        referenceImage,
+        referenceKind,
+        note: document.querySelector('#report-note').value,
+        analysis: lastAnalysis
+      })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Could not send the report.');
+    document.querySelector('#report-form').classList.add('hidden');
+    status.textContent = 'Thanks — that helps. The photos and what went wrong have been saved for review.';
+    status.classList.remove('hidden');
+  } catch (error) {
+    status.textContent = error.message;
+    status.classList.remove('hidden');
+  } finally {
+    send.disabled = false;
+    send.textContent = 'Send photos and report';
+  }
 });
 
 function escapeHtml(value) {

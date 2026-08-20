@@ -137,6 +137,7 @@ The image has been built and run for `linux/amd64` with OpenCV 5.0 working insid
 | `ANTHROPIC_API_KEY` | Required. Don't bake it into the image. |
 | `APP_PASSWORD` | Shared password (HTTP Basic). Unset means no authentication and anyone who can reach the server can spend your API credit. |
 | `REBRICKABLE_API_KEY` | Optional. Enables exact brick codes for issues when an instruction page carries a printed set number. Unset, the app links to the set's parts list instead of naming codes. |
+| `FEEDBACK_BUCKET` | Optional. S3 bucket for submissions a user reports as wrong. Unset, the report button is hidden and no photos are stored. `FEEDBACK_DIR` is the local-filesystem equivalent for development. |
 | `TRUST_PROXY` | Set to `1` only behind a load balancer that sets `X-Forwarded-For`. The Dockerfile defaults it on; unset it if the container is exposed directly, or the rate limit can be spoofed. |
 | `HOST` | Bind address, default `0.0.0.0`. Use `127.0.0.1` to keep it off the local network. |
 | `PORT`, `CLAUDE_MODEL` | Optional. |
@@ -182,6 +183,40 @@ To add a case, photograph a build complete, remove or swap a piece, photograph i
 ### Current results
 
 Nine cases: a generated framed mosaic, two LEGO Botanicals plants, and a pink creature compared against its product photo.
+
+## Learning from real mistakes
+
+There is no fine-tuning. The Claude API has no such endpoint, so the model is
+fixed and the only things you can change are the prompt, the pipeline and the
+evidence you change them against. That evidence is the eval suite, which makes
+a real failure the most valuable thing this app can collect.
+
+Normal analyses store nothing — photos go to a temp directory and are deleted
+in a `finally` block. The single exception is the **report a wrong answer**
+button, which sends that one submission, with its two photos and the analysis
+the user saw, to `FEEDBACK_BUCKET`. It is opt-in, it says plainly what it
+sends, and it is hidden entirely when no bucket is configured, so the offer is
+never made falsely.
+
+Failures only, not everything. Successes are the overwhelming majority and are
+worth nothing here, and logging them would mean holding far more photos of
+people's homes for no benefit. Retention is enforced by an S3 lifecycle rule
+(90 days by default) rather than by intention.
+
+The instance can `PutObject` and nothing else — no read, no list. A compromised
+app can add objects but cannot retrieve what other people reported. Pull one
+down with your own credentials and turn it into a case:
+
+```bash
+aws s3 sync s3://<bucket>/<id>/ /tmp/<id>/ --region eu-west-2
+node eval/promote-feedback.js /tmp/<id> a-short-case-name
+```
+
+That writes the photos into `eval/cases/<name>/` with a placeholder
+`expected.json`. You then fill in `defects[]` with where the real problem is —
+the script deliberately does not copy the reported issues into it, because
+those are what the app got *wrong*, and enshrining them as expected would
+lock in the bug.
 
 ## Instruction pages and brick codes
 

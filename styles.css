@@ -303,3 +303,48 @@ button:focus-visible, .upload-zone:focus-within, a:focus-visible {
   .part-option { transition: none; }
   .part-option:hover { transform: none; }
 }
+
+/* ---- Report a wrong answer ------------------------------------------- */
+/* The only route that shares a user's photos, so it reads as a deliberate
+   choice rather than a stray click: muted until opened, explicit about what
+   it sends, and cancellable. */
+.report-wrong {
+  margin-top: 18px;
+  padding: 14px 18px;
+  border: 1px dashed rgba(25, 37, 31, 0.18);
+  border-radius: 14px;
+}
+.report-prompt { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.report-prompt span { font-size: 0.85rem; color: #19251f99; }
+#report-open {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-size: 0.85rem; font-weight: 600; color: var(--brick-blue, #0057a6);
+  text-decoration: underline; text-underline-offset: 3px;
+}
+.report-form { display: grid; gap: 10px; }
+.report-form label { font-size: 0.85rem; font-weight: 600; }
+.report-form textarea {
+  width: 100%; padding: 10px 12px; font: inherit; font-size: 0.88rem;
+  border: 1px solid rgba(25, 37, 31, 0.2); border-radius: 10px; resize: vertical;
+  background: #fff; color: inherit;
+}
+.report-consent { margin: 0; font-size: 0.76rem; line-height: 1.5; color: #19251f99; }
+.report-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+#report-send {
+  padding: 9px 16px; border: none; border-radius: 10px; cursor: pointer;
+  font-weight: 700; font-size: 0.85rem; color: #fff;
+  background: var(--brick-red, #d01012); box-shadow: 0 3px 0 #8d0b0d;
+}
+#report-send:active { transform: translateY(2px); box-shadow: 0 1px 0 #8d0b0d; }
+#report-send:disabled { opacity: 0.6; cursor: progress; box-shadow: 0 3px 0 #8d0b0d; transform: none; }
+.report-secondary {
+  padding: 9px 16px; border-radius: 10px; cursor: pointer; font-size: 0.85rem;
+  background: transparent; border: 1px solid rgba(25, 37, 31, 0.2); color: inherit;
+}
+.report-status { margin: 10px 0 0; font-size: 0.85rem; color: var(--brick-green, #237841); font-weight: 600; }
+#report-open:focus-visible, #report-send:focus-visible, .report-secondary:focus-visible,
+.report-form textarea:focus-visible { outline: 3px solid var(--brick-yellow, #f5c518); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  #report-send:active { transform: none; }
+}

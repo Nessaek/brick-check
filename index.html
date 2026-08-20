@@ -50,7 +50,7 @@
           <div class="or"><span>OR</span></div>
           <button class="instruction-button" id="upload-instructions"><span>▧</span><span><b>Upload instruction page</b><small>Reads the set number for exact brick codes</small></span><span>+</span></button>
           <button class="analyze" id="analyze"><span class="sparkle">✦</span> Analyze my build <span class="arrow">→</span></button>
-          <p class="privacy">Your photos are used only to analyse this build.</p>
+          <p class="privacy">Your photos are used to analyse this build and then discarded. Nothing is stored unless you choose to report a wrong answer.</p>
         </div>
       </section>
 
@@ -65,6 +65,22 @@
           <div class="issues"></div>
         </div>
         <section class="parts-panel" id="parts-panel" hidden></section>
+        <section class="report-wrong hidden" id="report-wrong">
+          <div class="report-prompt" id="report-prompt-row">
+            <span>Not right?</span>
+            <button id="report-open">Report a wrong answer</button>
+          </div>
+          <div class="report-form hidden" id="report-form">
+            <label for="report-note">What did it get wrong?</label>
+            <textarea id="report-note" rows="2" maxlength="2000" placeholder="e.g. it missed the missing brick under the left arm"></textarea>
+            <p class="report-consent">Sending shares <b>both photos</b> and this analysis with the developer, so the mistake can be used to improve BrickCheck. They are kept for 90 days. Don't send photos you wouldn't want shared.</p>
+            <div class="report-actions">
+              <button id="report-cancel" class="report-secondary">Cancel</button>
+              <button id="report-send">Send photos and report</button>
+            </div>
+          </div>
+          <p class="report-status hidden" id="report-status" role="status"></p>
+        </section>
         <div class="success-card"><span class="success-icon">✓</span><span><b>All fixed?</b> Take another photo and we’ll make sure your build matches.</span><button id="check-again">Check again →</button></div>
       </section>
     </main>

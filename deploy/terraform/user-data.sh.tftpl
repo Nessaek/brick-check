@@ -55,6 +55,8 @@ cat > /etc/brickcheck.env <<EOF
 ANTHROPIC_API_KEY=$API_KEY
 APP_PASSWORD=$APP_PASSWORD
 REBRICKABLE_API_KEY=$REBRICKABLE_API_KEY
+FEEDBACK_BUCKET=${feedback_bucket}
+AWS_REGION=${region}
 # Correct here: Caddy terminates TLS and sets X-Forwarded-For, and the app
 # container publishes no host port, so requests cannot arrive any other way.
 TRUST_PROXY=1

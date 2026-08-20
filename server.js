@@ -3,6 +3,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
+const { saveFeedback, feedbackEnabled, feedbackTarget } = require('./feedback');
 const { execFile } = require('child_process');
 
 const root = __dirname;
@@ -791,6 +792,9 @@ async function analyse(image, referenceImage, referenceKind) {
     // 'catalogue' means every code came from the set's real inventory.
     // 'none' means we could not look parts up, and the UI must not invent any.
     partsSource: inventory ? 'catalogue' : 'none',
+    // Drives whether the UI offers to report a wrong answer. Hidden entirely
+    // when there is nowhere to store one, so the offer is never made falsely.
+    feedback: feedbackEnabled(),
     // When alignment succeeded, the warped reference shares the build photo's
     // coordinate system — the client uses it to crop matching "yours vs
     // target" regions around each issue.
@@ -819,6 +823,38 @@ http.createServer(async (req, res) => {
       return;
     }
   }
+  if (req.method === 'POST' && req.url === '/api/feedback') {
+    if (!feedbackEnabled()) {
+      return send(res, 501, { error: 'Feedback collection is not enabled on this server.' });
+    }
+    if (rateLimited(clientIp(req))) {
+      return send(res, 429, { error: 'Too many reports in a short time — wait a minute and try again.' });
+    }
+    try {
+      const body = await readBody(req);
+      const build = parseDataUrl(body.image);
+      const reference = body.referenceImage ? parseDataUrl(body.referenceImage) : null;
+      const id = await saveFeedback({
+        build: { buffer: Buffer.from(build.data, 'base64'), mimeType: build.mimeType },
+        reference: reference && { buffer: Buffer.from(reference.data, 'base64'), mimeType: reference.mimeType },
+        meta: {
+          reportedAt: new Date().toISOString(),
+          referenceKind: body.referenceKind === 'instructions' ? 'instructions' : 'photo',
+          // What the user says was wrong, in their words — the label that
+          // makes this submission usable as an eval case later.
+          note: String(body.note || '').slice(0, 2000),
+          // The analysis as the user saw it. Client-supplied, so it is stored
+          // as a record of what was shown, never trusted as input to anything.
+          reported: body.analysis || null
+        }
+      });
+      return send(res, 200, { ok: true, id });
+    } catch (error) {
+      send(res, error.statusCode || 400, { error: error.message });
+      if (!req.readableEnded) req.destroy();
+      return;
+    }
+  }
   const file = req.url === '/' ? '/index.html' : req.url.split('?')[0];
   if (!STATIC_FILES.has(file)) return send(res, 404, 'Not found', 'text/plain');
   const target = path.resolve(root, `.${file}`);
@@ -835,6 +871,9 @@ http.createServer(async (req, res) => {
   console.log(alignmentAvailable
     ? 'Image processing enabled — photo alignment, coordinate grid and zoomed issue verification are all active.'
     : 'Image processing DISABLED (python3/opencv/scikit-image not found) — alignment, the coordinate grid and issue verification are all off, which markedly reduces accuracy. Install preprocess/requirements.txt to enable them.');
+  console.log(feedbackEnabled()
+    ? `Feedback collection enabled — reported mistakes are saved to ${feedbackTarget()}.`
+    : 'Feedback collection disabled (no FEEDBACK_BUCKET) — the "this looks wrong" button is hidden and no photos are ever stored.');
   console.log(REBRICKABLE_KEY
     ? 'Brick codes enabled — an uploaded instruction page with a printed set number will list the exact parts to order.'
     : 'Brick codes disabled (no REBRICKABLE_API_KEY) — instruction pages still improve the check, but issues will link to a parts search instead of naming exact codes.');

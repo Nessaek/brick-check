@@ -152,6 +152,7 @@ resource "aws_instance" "brickcheck" {
     api_key_parameter      = var.api_key_parameter
     app_password_parameter = var.app_password_parameter
     rebrickable_parameter  = var.rebrickable_parameter
+    feedback_bucket        = var.collect_feedback ? aws_s3_bucket.feedback[0].bucket : ""
     fixed_ip               = var.use_elastic_ip ? aws_eip.brickcheck[0].public_ip : ""
   })
 
@@ -164,8 +165,12 @@ resource "aws_instance" "brickcheck" {
   metadata_options {
     # IMDSv2 only — a token is required, which blocks the SSRF-style reads of
     # instance credentials that IMDSv1 allows.
-    http_tokens   = "required"
-    http_endpoint = "enabled"
+    http_tokens = "required"
+    # The app runs in a container, and leaving the default of 1 makes every
+    # credential fetch from inside it fail. The role is what lets the app write
+    # reported submissions to S3, so at 1 that feature breaks silently.
+    http_put_response_hop_limit = 2
+    http_endpoint               = "enabled"
   }
 
   tags = { Name = "brickcheck" }

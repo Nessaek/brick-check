@@ -21,7 +21,7 @@ RUN python3 -m venv preprocess/.venv \
 
 # The server has no npm dependencies, so there is nothing to install here.
 COPY package.json ./
-COPY server.js app.js index.html styles.css example-reference.jpg ./
+COPY server.js feedback.js app.js index.html styles.css example-reference.jpg ./
 COPY preprocess/align.py preprocess/grid.py preprocess/crop.py preprocess/
 
 # TRUST_PROXY makes the rate limiter read X-Forwarded-For, which is correct
@@ -38,6 +38,10 @@ ENV PORT=3000 \
 #   REBRICKABLE_API_KEY optional; enables exact brick codes from an uploaded
 #                       instruction page. Absent, the app names no part codes
 #                       rather than guessing them.
+#   FEEDBACK_BUCKET     optional; S3 bucket for submissions a user reports as
+#                       wrong. Absent, the report button is hidden and no
+#                       photos are stored. FEEDBACK_DIR is the local
+#                       equivalent for development.
 #
 # The app holds no state, so no volume is needed. Spend is capped by the
 # limit set on the Anthropic account, which is authoritative and cannot be
