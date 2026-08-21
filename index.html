@@ -13,13 +13,22 @@
     <main>
       <nav>
         <a class="brand" href="#"><span class="brand-mark">B</span>BrickCheck</a>
-        <div class="nav-actions"><button class="text-button">How it works</button><button class="avatar">AD</button></div>
+        <div class="nav-actions"><button class="text-button" id="how-it-works" aria-expanded="false" aria-controls="how-panel">How it works</button></div>
       </nav>
 
       <section class="hero">
         <div class="eyebrow"><span></span> BUILD REVIEW</div>
         <h1>Spot the wrong brick.<br /><em>Fix it with confidence.</em></h1>
         <p>Upload a photo of your build and a photo of how it should look. We’ll compare them and show exactly what to change.</p>
+      </section>
+
+      <section class="how-panel hidden" id="how-panel">
+        <ol>
+          <li><b>Photograph both.</b> Your build as it stands, and how it should look — a finished photo, or a page from the instructions.</li>
+          <li><b>They get lined up.</b> The two photos are warped onto the same viewpoint and colour-matched, then compared region by region rather than as whole images, which is what makes a small missing brick findable.</li>
+          <li><b>You get marked-up results.</b> Each problem is pinned on your own photo. Upload an instruction page and the printed set number is read too, which unlocks the exact bricks to order.</li>
+        </ol>
+        <p class="how-caveat">It is automated, and it is wrong sometimes — it can miss a real mistake or flag something that is fine. If it gets one wrong, use the report button on the results; that is what improves it.</p>
       </section>
 
       <section class="workspace" id="workspace">

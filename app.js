@@ -396,6 +396,18 @@ document.addEventListener('click', event => {
   if (issue) selectPart(issue, Number(button.dataset.index));
 });
 
+// "How it works" used to be a button that did nothing, next to an avatar
+// implying a signed-in account on a site that has no accounts. On a public URL
+// where most visitors have never seen this before, the explanation is worth
+// having; the fake account is not.
+const howButton = document.querySelector('#how-it-works');
+howButton.addEventListener('click', () => {
+  const panel = document.querySelector('#how-panel');
+  const open = panel.classList.toggle('hidden');
+  howButton.setAttribute('aria-expanded', String(!open));
+  if (!open) panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+
 // Reporting a wrong answer. This is the one path that shares the user's
 // photos, so it is opt-in, states plainly what it sends, and is hidden
 // entirely when the server has nowhere to put them.
