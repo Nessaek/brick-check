@@ -1,6 +1,0 @@
-{
-  "description": "LEGO X-Files (21343) vs official render. UNCONFIRMED: the pine trees read teal where the official set is green. The brown cliff in the same photo renders warm, which argues against a global colour cast, but the room is lit green and the photo is dim.",
-  "defects": [],
-  "tolerance": 20,
-  "_todo": "No defect could be confirmed from the images. Fill in defects[] with the real x/y (percent of build.jpg) before using this case."
-}

@@ -1,6 +1,0 @@
-{
-  "description": "LEGO Tranquil Garden (10315) vs official render. UNCONFIRMED. The photo is taken from close to the opposite side of the diorama, so the layout does not correspond left-to-right and no difference could be isolated.",
-  "defects": [],
-  "tolerance": 20,
-  "_todo": "No defect could be confirmed from the images. Fill in defects[] with the real x/y (percent of build.jpg) before using this case."
-}

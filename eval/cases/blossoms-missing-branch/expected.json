@@ -1,0 +1,14 @@
+{
+  "description": "LEGO Plum Blossom vs official render. A short branch piece is missing near the top of the tallest limb. Note the branches photograph dark grey against reddish brown in the render \u2014 that is the render, not a defect. Defect location taken from the builder's own annotated photo (annotated.jpg).",
+  "defects": [
+    {
+      "x": 39,
+      "y": 22,
+      "label": "small branch missing from the topmost limb",
+      "types": [
+        "MISSING PIECE"
+      ]
+    }
+  ],
+  "tolerance": 15
+}

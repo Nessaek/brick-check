@@ -1,0 +1,14 @@
+{
+  "description": "LEGO Fender Stratocaster (21329) vs official render. The tremolo arm is missing: the render shows a grey arm with a black ball tip angled out of the bridge pivot. Defect location taken from the builder's own annotated photo (annotated.jpg).",
+  "defects": [
+    {
+      "x": 55,
+      "y": 71,
+      "label": "tremolo arm (whammy bar) missing from the bridge",
+      "types": [
+        "MISSING PIECE"
+      ]
+    }
+  ],
+  "tolerance": 15
+}

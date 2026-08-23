@@ -1,0 +1,14 @@
+{
+  "description": "LEGO Bird of Paradise (10289) vs official render. The lower flower is missing an orange petal; the upper flower on the same plant shows the full fan for comparison. Defect location taken from the builder's own annotated photo (annotated.jpg).",
+  "defects": [
+    {
+      "x": 51,
+      "y": 47,
+      "label": "orange petal missing from the lower flower",
+      "types": [
+        "MISSING PIECE"
+      ]
+    }
+  ],
+  "tolerance": 15
+}

@@ -1,0 +1,22 @@
+{
+  "description": "LEGO X-Files (21343) vs official render. A leaf is missing from the forest floor right of the alien. Note the pine trees photograph teal against green in the render \u2014 that is the room's light, not a defect. Defect location taken from the builder's own annotated photo (annotated.jpg).",
+  "defects": [
+    {
+      "x": 65,
+      "y": 59,
+      "label": "leaf missing from the forest floor to the right of the alien",
+      "types": [
+        "MISSING PIECE"
+      ]
+    }
+  ],
+  "tolerance": 15,
+  "ignore": [
+    {
+      "x": 40,
+      "y": 30,
+      "radius": 18,
+      "label": "pine trees photograph teal; the render is the outlier"
+    }
+  ]
+}

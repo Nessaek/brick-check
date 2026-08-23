@@ -1,0 +1,14 @@
+{
+  "description": "LEGO Japanese Red Maple Bonsai vs official photo. A leaf cluster is missing from the lower-left branch, leaving the bare branch end visible. Defect location taken from the builder's own annotated photo (annotated.jpg).",
+  "defects": [
+    {
+      "x": 40,
+      "y": 59,
+      "label": "leaf cluster missing from the lower-left branch",
+      "types": [
+        "MISSING PIECE"
+      ]
+    }
+  ],
+  "tolerance": 15
+}

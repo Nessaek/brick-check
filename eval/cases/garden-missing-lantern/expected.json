@@ -1,0 +1,14 @@
+{
+  "description": "LEGO Tranquil Garden (10315) vs official render. A stone lantern is missing from the ground to the right of the tea house. The photo is taken from a different side of the diorama than the render, so nothing lines up left-to-right. Defect location taken from the builder's own annotated photo (annotated.jpg).",
+  "defects": [
+    {
+      "x": 65,
+      "y": 74,
+      "label": "stone lantern missing from the right of the tea house",
+      "types": [
+        "MISSING PIECE"
+      ]
+    }
+  ],
+  "tolerance": 15
+}

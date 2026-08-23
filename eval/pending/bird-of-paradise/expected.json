@@ -1,6 +1,0 @@
-{
-  "description": "LEGO Bird of Paradise (10289) vs BOX ART. UNCONFIRMED. The reference is a photo of the box rather than the model alone, and the build photo is cropped to the upper stems, so the two barely overlap.",
-  "defects": [],
-  "tolerance": 20,
-  "_todo": "No defect could be confirmed from the images. Fill in defects[] with the real x/y (percent of build.jpg) before using this case."
-}
