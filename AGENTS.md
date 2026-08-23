@@ -6,7 +6,11 @@ wrong colours, wrong orientation. Upload an instruction page instead of a
 finished photo and it also reads the printed set number and lists the exact
 bricks to order.
 
-Live at https://bricksolver.com/ — public, no password, deliberately.
+Live at https://bricksolver.com — public, no password, deliberately.
+
+The reference can be a photo you upload, an instruction page (which is read for
+the set number and step), or just a set number typed in, which fetches the
+official product photo for you.
 
 ## Running it
 
@@ -90,6 +94,13 @@ several are counter-intuitive.
 - **There is no fine-tuning for Claude.** Improving accuracy means changing the
   prompt or pipeline and measuring against the eval. That is the whole loop.
 
+**Occlusion is the deepest limitation and it is not fixable in the prompt.** A
+build is a 3-D object and one photo hides part of it, so the model cannot
+distinguish a missing piece from a hidden one. `VIEWPOINT_GUARD` fights this
+with a worked example and still costs accuracy both ways — it suppresses real
+detections as well as false ones. The real fix is more viewpoints or a 3-D
+reference, not better wording. Do not spend effort re-tuning that paragraph.
+
 Known weakness: on blurry photos the verification pass sometimes rejects a
 defect the detector correctly found. The eval reports which stage lost a
 defect — trust that attribution, because a first-pass miss and a wrongly
@@ -111,6 +122,9 @@ rejected candidate need opposite fixes.
 - **IMDS hop limit is 2, not the default 1.** The app runs in a container,
   which costs a hop; at 1, credential fetches fail silently and S3 uploads
   break with no obvious cause.
+- **The repo name is baked into the OIDC trust policy** (both subject forms).
+  Renaming the repository breaks deploys until Terraform is applied; GitHub
+  redirects URLs but the trust policy gets no redirect.
 - **Deploy before you apply, not after.** Pushing and then replacing the
   instance makes the deploy target a machine that no longer exists.
 

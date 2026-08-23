@@ -4,6 +4,41 @@ Upload a photo of a part-built LEGO model and a photo of how it should look. Bri
 
 Both photos are required. The whole method is a comparison, so there's nothing useful to do with only one.
 
+Live at **https://bricksolver.com**.
+
+## Why this exists
+
+I love LEGO, and it is easy to make mistakes in a build. A piece goes on one
+stud over, or you grab the wrong shade of grey, and you find out forty steps
+later when something will not line up. I wanted something that would tell me
+straight away, so I built this to identify those mistakes.
+
+I was surprised by how difficult it turned out to be. My assumption was that
+the hard part would be plumbing — upload two photos, ask a model what is
+different, render the answer. In practice, asking that question directly finds
+nothing: a missing brick is a few percent of the frame, and a vision model
+spreads its attention across the whole picture. Almost everything in
+[How it works](#how-it-works) exists to concentrate that attention somewhere
+smaller, and each stage had to be measured, because roughly half the ideas that
+sounded obviously right made the results worse.
+
+**Occlusion is the thing the AI really struggles with.** A LEGO build is a 3-D
+object, and any single photo hides part of it. The model cannot tell a piece
+that is missing from a piece that is behind something, so it confidently
+reports parts as absent when they are simply out of view. There is a whole
+paragraph of prompt fighting this, with a worked example, and it still costs
+accuracy in both directions — it suppresses real finds as well as false ones.
+It is not a prompt problem, it is a geometry problem: you cannot resolve it
+from one viewpoint, and the honest fix is several photos or a real 3-D
+reference. That is the first thing I would build next.
+
+The second surprise was how unreliable my own judgement was. Labelling six
+builds against official product photos, I confidently identified colour swaps
+in four of them. Every single one was a rendering artifact, and every real
+defect was a missing piece I had walked straight past. Renders do not reproduce
+LEGO colours the way a phone camera does, and absence is much harder to notice
+than difference — for people as well as models.
+
 ## Running it
 
 Needs Node 18+ and an [Anthropic API key](https://console.anthropic.com/). Python 3 with OpenCV is technically optional but see [Image processing](#image-processing) — the app is much worse without it.
@@ -205,7 +240,7 @@ AWS deployments are covered two ways:
 
 If it's only for you, don't deploy it. Run it locally and reach it from your phone over Tailscale — nothing is exposed, the key never leaves the machine, and there's no hosting bill.
 
-`com.brickcheck.server.plist` is a macOS LaunchAgent template that keeps the server running across logins. Edit the paths, copy it to `~/Library/LaunchAgents/`, then bootstrap it. It sets `HOST=127.0.0.1` so the app stays on loopback, and reads the API key from `.env` rather than holding it.
+`com.bricksolver.server.plist` is a macOS LaunchAgent template that keeps the server running across logins. Edit the paths, copy it to `~/Library/LaunchAgents/`, then bootstrap it. It sets `HOST=127.0.0.1` so the app stays on loopback, and reads the API key from `.env` rather than holding it.
 
 ```bash
 tailscale serve --bg 3000
