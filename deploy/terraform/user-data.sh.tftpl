@@ -32,23 +32,34 @@ if [ "$REBRICKABLE_API_KEY" = "None" ]; then REBRICKABLE_API_KEY=""; fi
 # Caddy needs a hostname to get a certificate for. With no domain of your own,
 # fall back to sslip.io, which resolves <ip>.sslip.io straight to <ip> — good
 # enough for Let's Encrypt to issue a real, publicly trusted certificate.
-SITE='${domain}'
-if [ -z "$SITE" ]; then
-  # Prefer the Elastic IP passed in by Terraform. Reading the address from
-  # instance metadata instead would pick up the temporary one the box boots
-  # with, and the certificate would be issued for a hostname that stops
-  # resolving here the moment the Elastic IP is associated.
-  FIXED_IP='${fixed_ip}'
-  if [ -n "$FIXED_IP" ]; then
-    SITE="$FIXED_IP.sslip.io"
-  else
-    # IMDSv2 is required on this instance, so fetch a token first.
-    TOKEN=$(curl -sX PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
-    PUBLIC_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4)
-    SITE="$PUBLIC_IP.sslip.io"
-  fi
+DOMAIN='${domain}'
+FIXED_IP='${fixed_ip}'
+
+# The sslip.io name is derived from the Elastic IP passed in by Terraform.
+# Reading the address from instance metadata instead would pick up the
+# temporary one the box boots with, and the certificate would be issued for a
+# hostname that stops resolving here the moment the Elastic IP is associated.
+if [ -n "$FIXED_IP" ]; then
+  FALLBACK="$FIXED_IP.sslip.io"
+else
+  # IMDSv2 is required on this instance, so fetch a token first.
+  TOKEN=$(curl -sX PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
+  PUBLIC_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4)
+  FALLBACK="$PUBLIC_IP.sslip.io"
 fi
-echo "serving as $SITE"
+
+# Serve the sslip name alongside a real domain rather than replacing it. Links
+# already shared keep working instead of failing a certificate check, and a
+# mistake in the domain's DNS cannot take the site down — Caddy issues per
+# hostname, so the fallback keeps serving while the domain sorts itself out.
+if [ -n "$DOMAIN" ]; then
+  SITE="$DOMAIN"
+  HOSTS="$DOMAIN, $FALLBACK"
+else
+  SITE="$FALLBACK"
+  HOSTS="$FALLBACK"
+fi
+echo "serving as $HOSTS"
 
 install -m 600 /dev/null /etc/brickcheck.env
 cat > /etc/brickcheck.env <<EOF
@@ -74,7 +85,7 @@ docker network create brickcheck 2>/dev/null || true
 
 mkdir -p /etc/caddy
 cat > /etc/caddy/Caddyfile <<EOF
-$SITE {
+$HOSTS {
 	reverse_proxy brickcheck:3000 {
 		transport http {
 			# Analyses run to about a minute; the default would cut them off.
@@ -83,6 +94,16 @@ $SITE {
 	}
 }
 EOF
+
+# www redirects to the bare domain rather than serving a duplicate site.
+if [ -n "$DOMAIN" ]; then
+  cat >> /etc/caddy/Caddyfile <<EOF
+
+www.$DOMAIN {
+	redir https://$DOMAIN{uri} permanent
+}
+EOF
+fi
 
 cat > /etc/systemd/system/brickcheck.service <<'EOF'
 [Unit]
