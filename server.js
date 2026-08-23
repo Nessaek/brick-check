@@ -539,6 +539,82 @@ async function fetchSetInventory(setNumber) {
 
 // Two ideas here, and the second was measured rather than assumed.
 //
+// Magic-byte sniffing. Content-Type headers and file extensions are both
+// hints, and at least one upstream gets both wrong.
+function sniffImageType(buffer) {
+  if (buffer.length < 12) return null;
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg';
+  if (buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+  if (buffer.subarray(0, 4).toString('ascii') === 'RIFF' && buffer.subarray(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
+  if (buffer.subarray(0, 6).toString('ascii').startsWith('GIF8')) return 'image/gif';
+  return null;
+}
+
+// Looking a set up by number, so the reference does not have to be uploaded.
+//
+// This is strictly better than asking the model to recognise the set: the user
+// types the number off the box, we fetch what that number actually is, and
+// they confirm it against a thumbnail. Nothing is guessed at any point.
+//
+// The image we get back is the official product render of the FINISHED model.
+// That makes it the wrong reference for someone midway through a build — every
+// unbuilt part would read as missing — which is why uploading an instruction
+// page stays available for step-level checking.
+const setCache = new Map();
+
+async function lookupSet(setNumber) {
+  const clean = String(setNumber || '').trim().replace(/[^0-9-]/g, '');
+  if (!clean || !/^\d{3,7}(-\d+)?$/.test(clean)) {
+    throw Object.assign(new Error('That does not look like a LEGO set number — try the 4-7 digits printed on the box, e.g. 10309.'), { statusCode: 400 });
+  }
+  if (!REBRICKABLE_KEY) {
+    throw Object.assign(new Error('Set lookup is not configured on this server.'), { statusCode: 501 });
+  }
+  const id = clean.includes('-') ? clean : `${clean}-1`;
+  if (setCache.has(id)) return setCache.get(id);
+
+  const response = await fetch(`https://rebrickable.com/api/v3/lego/sets/${encodeURIComponent(id)}/`, {
+    headers: { Authorization: `key ${REBRICKABLE_KEY}`, Accept: 'application/json' },
+    signal: AbortSignal.timeout(15000)
+  });
+  if (response.status === 404) {
+    throw Object.assign(new Error(`No LEGO set found with number ${clean}.`), { statusCode: 404 });
+  }
+  if (!response.ok) {
+    throw Object.assign(new Error('Could not reach the set catalogue just now.'), { statusCode: 502 });
+  }
+  const body = await response.json();
+  if (!body.set_img_url) {
+    throw Object.assign(new Error(`${body.name} has no reference photo in the catalogue — please upload one instead.`), { statusCode: 404 });
+  }
+
+  // Fetched server-side rather than hotlinked: the analysis needs the bytes
+  // anyway, and it keeps the user's browser from calling a third party.
+  const img = await fetch(body.set_img_url, { signal: AbortSignal.timeout(20000) });
+  if (!img.ok) {
+    throw Object.assign(new Error('Could not download the reference photo for that set.'), { statusCode: 502 });
+  }
+  const buffer = Buffer.from(await img.arrayBuffer());
+  // Sniff the real format instead of believing the response. Rebrickable
+  // serves PNG bytes from a .jpg URL under Content-Type: image/jpeg — both the
+  // extension and the header are wrong — and the Anthropic API rejects an
+  // image whose declared media_type does not match its content.
+  const mime = sniffImageType(buffer);
+  if (!mime) {
+    throw Object.assign(new Error('The catalogue returned something that was not a usable image.'), { statusCode: 502 });
+  }
+
+  const result = {
+    number: String(body.set_num).replace(/-\d+$/, ''),
+    name: body.name,
+    year: body.year,
+    parts: body.num_parts,
+    image: `data:${mime};base64,${buffer.toString('base64')}`
+  };
+  setCache.set(id, result);
+  return result;
+}
+
 // The enum is what stops invention. Asked to recall a part number the model
 // makes up plausible ones; asked to choose from this set's actual inventory it
 // is answering multiple choice, and anything off-list is rejected by the API
@@ -679,7 +755,7 @@ async function callClaude(content, forceTool, tool = REPORT_ISSUES_TOOL) {
   return payload.content?.find(block => block.type === 'tool_use' && block.name === tool.name) || null;
 }
 
-async function analyse(image, referenceImage, referenceKind) {
+async function analyse(image, referenceImage, referenceKind, setNumber) {
   if (!image) throw new Error('Please upload a photo of your build first.');
   if (!referenceImage) throw new Error('Please add a reference photo showing how the build should look.');
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -688,7 +764,10 @@ async function analyse(image, referenceImage, referenceKind) {
 
   // Opt-in: only when the user chose "upload instruction page". Costs one
   // extra call, and every downstream use of it degrades to nothing if it fails.
-  const instructions = referenceKind === 'instructions' ? await readInstructionPage(referenceImage) : null;
+  let instructions = referenceKind === 'instructions' ? await readInstructionPage(referenceImage) : null;
+  // A set number the user typed is better ground truth than one read off a
+  // page, so it wins outright.
+  if (setNumber) instructions = { ...(instructions || {}), setNumber: String(setNumber) };
 
   let aligned = false;
   let alignReason = null;
@@ -807,18 +886,31 @@ async function analyse(image, referenceImage, referenceKind) {
 
 http.createServer(async (req, res) => {
   if (!authorized(req)) {
-    res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="BrickCheck", charset="UTF-8"' });
+    res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="BrickSolver", charset="UTF-8"' });
     return res.end('Authentication required.');
   }
   if (req.method === 'POST' && req.url === '/api/analyze') {
     if (rateLimited(clientIp(req))) {
       return send(res, 429, { error: 'Too many analyses in a short time — wait a minute and try again.' });
     }
-    try { const { image, referenceImage, referenceKind } = await readBody(req); return send(res, 200, await analyse(image, referenceImage, referenceKind)); }
+    try { const { image, referenceImage, referenceKind, setNumber } = await readBody(req); return send(res, 200, await analyse(image, referenceImage, referenceKind, setNumber)); }
     catch (error) {
       send(res, error.statusCode || 400, { error: error.message });
       // An over-sized upload was paused rather than read to completion —
       // close it now that the client has its answer.
+      if (!req.readableEnded) req.destroy();
+      return;
+    }
+  }
+  if (req.method === 'POST' && req.url === '/api/set') {
+    if (rateLimited(clientIp(req))) {
+      return send(res, 429, { error: 'Too many lookups in a short time — wait a minute and try again.' });
+    }
+    try {
+      const { setNumber } = await readBody(req);
+      return send(res, 200, await lookupSet(setNumber));
+    } catch (error) {
+      send(res, error.statusCode || 400, { error: error.message });
       if (!req.readableEnded) req.destroy();
       return;
     }
@@ -866,7 +958,7 @@ http.createServer(async (req, res) => {
 // instead (e.g. `tailscale serve`).
 }).listen(process.env.PORT || 3000, process.env.HOST || '0.0.0.0', async () => {
   alignmentAvailable = await checkAlignmentAvailable();
-  console.log(`BrickCheck is ready at http://${process.env.HOST || 'localhost'}:${process.env.PORT || 3000}`);
+  console.log(`BrickSolver is ready at http://${process.env.HOST || 'localhost'}:${process.env.PORT || 3000}`);
   console.log(process.env.ANTHROPIC_API_KEY ? `Live analysis enabled (${CLAUDE_MODEL}).` : 'No ANTHROPIC_API_KEY found — add it to .env to analyse photos.');
   console.log(alignmentAvailable
     ? 'Image processing enabled — photo alignment, coordinate grid and zoomed issue verification are all active.'

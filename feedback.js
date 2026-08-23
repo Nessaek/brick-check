@@ -1,6 +1,6 @@
 // Saving a submission someone reported as wrong.
 //
-// This is the only part of BrickCheck that keeps a user's photos. Everything
+// This is the only part of BrickSolver that keeps a user's photos. Everything
 // else deletes them in a finally block, and the UI says so, which is why this
 // runs ONLY when someone presses "this wasn't right" — never on a normal
 // analysis. A wrong answer is the thing worth keeping; the successes are

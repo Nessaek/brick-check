@@ -14,6 +14,7 @@ let previewUrl = '';
 const referenceUpload = document.querySelector('#reference-upload');
 const instructionUpload = document.querySelector('#instruction-upload');
 let referenceKind = 'photo';
+let setNumber = '';
 let lastIssues = [];
 const imageExtensions = /\.(jpe?g|png|gif|webp|heic|heif|bmp|avif)$/i;
 
@@ -137,6 +138,7 @@ async function setReference(file, label, kind) {
 function clearReference() {
   referenceImage = '';
   referenceKind = 'photo';
+  setNumber = '';
   alignedReference = '';
   referenceUpload.value = '';
   instructionUpload.value = '';
@@ -169,7 +171,7 @@ analyze.addEventListener('click', async () => {
   }
   loading.classList.remove('hidden');
   try {
-    const response = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: uploadedImage, referenceImage, referenceKind }) });
+    const response = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: uploadedImage, referenceImage, referenceKind, setNumber }) });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Analysis failed.');
     alignedReference = data.alignedReference || '';
@@ -406,6 +408,65 @@ howButton.addEventListener('click', () => {
   const open = panel.classList.toggle('hidden');
   howButton.setAttribute('aria-expanded', String(!open));
   if (!open) panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+
+// Looking the set up by number. The catalogue answer is shown for confirmation
+// before it is used — the number is typed, so a typo is the only way to get the
+// wrong set, and a thumbnail catches that instantly.
+let pendingSet = null;
+
+function setStatus(message, isError) {
+  const el = document.querySelector('#set-status');
+  el.textContent = message;
+  el.classList.toggle('error', Boolean(isError));
+  el.classList.toggle('hidden', !message);
+}
+
+async function findSet() {
+  const value = document.querySelector('#set-number').value.trim();
+  if (!value) return;
+  const button = document.querySelector('#set-find');
+  document.querySelector('#set-confirm').classList.add('hidden');
+  button.disabled = true;
+  setStatus('Looking it up…', false);
+  try {
+    const response = await fetch('/api/set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ setNumber: value })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Could not find that set.');
+    pendingSet = data;
+    document.querySelector('#set-thumb').src = data.image;
+    document.querySelector('#set-name').textContent = data.name;
+    document.querySelector('#set-meta').textContent = `${data.number} · ${data.year} · ${data.parts} pieces`;
+    document.querySelector('#set-confirm').classList.remove('hidden');
+    setStatus('', false);
+  } catch (error) {
+    setStatus(error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+document.querySelector('#set-find').addEventListener('click', findSet);
+document.querySelector('#set-number').addEventListener('keydown', event => {
+  if (event.key === 'Enter') { event.preventDefault(); findSet(); }
+});
+
+document.querySelector('#set-use').addEventListener('click', () => {
+  if (!pendingSet) return;
+  referenceImage = pendingSet.image;
+  referenceKind = 'photo';
+  setNumber = pendingSet.number;
+  referenceImageArea.innerHTML = `<img src="${pendingSet.image}" alt="Official photo of ${escapeHtml(pendingSet.name)}">`;
+  document.querySelector('#reference-title').textContent = pendingSet.name;
+  document.querySelector('#reference-status').textContent = `Official photo · set ${pendingSet.number}`;
+  document.querySelector('#remove-ref').hidden = false;
+  document.querySelector('#set-confirm').classList.add('hidden');
+  setStatus(`Using the official photo of ${pendingSet.name}.`, false);
+  refreshAnalyzeState();
 });
 
 // Reporting a wrong answer. This is the one path that shares the user's

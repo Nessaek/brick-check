@@ -1,7 +1,12 @@
 {
-  "name": "brickcheck",
+  "name": "bricksolver",
   "version": "1.0.0",
   "private": true,
-  "scripts": { "start": "node server.js", "eval": "node eval/run.js" },
-  "engines": { "node": ">=18" }
+  "scripts": {
+    "start": "node server.js",
+    "eval": "node eval/run.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
 }

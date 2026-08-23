@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>BrickCheck — Fix your LEGO build</title>
+    <title>BrickSolver — Fix your LEGO build</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -12,7 +12,7 @@
   <body>
     <main>
       <nav>
-        <a class="brand" href="#"><span class="brand-mark">B</span>BrickCheck</a>
+        <a class="brand" href="#"><span class="brand-mark">B</span>BrickSolver</a>
         <div class="nav-actions"><button class="text-button" id="how-it-works" aria-expanded="false" aria-controls="how-panel">How it works</button></div>
       </nav>
 
@@ -57,6 +57,21 @@
             <div><b id="reference-title">No reference selected</b><span id="reference-status">Required &mdash; add a photo of the finished model or an instruction page</span><button class="change-ref" id="change-ref">Choose reference →</button><button class="change-ref" id="remove-ref" hidden>Remove reference ×</button></div>
           </div>
           <div class="or"><span>OR</span></div>
+          <div class="set-lookup">
+            <label for="set-number">Know the set number?</label>
+            <div class="set-row">
+              <input id="set-number" type="text" inputmode="numeric" maxlength="9" placeholder="e.g. 10309" autocomplete="off" />
+              <button id="set-find">Find set</button>
+            </div>
+            <p class="set-status hidden" id="set-status" role="status"></p>
+            <div class="set-confirm hidden" id="set-confirm">
+              <img id="set-thumb" alt="" />
+              <div><b id="set-name"></b><span id="set-meta"></span></div>
+              <button id="set-use">Use this →</button>
+            </div>
+            <p class="set-note">Fetches the official photo of the finished set. Building it in stages? Upload the instruction page instead — the finished photo would call every unbuilt piece missing.</p>
+          </div>
+          <div class="or"><span>OR</span></div>
           <button class="instruction-button" id="upload-instructions"><span>▧</span><span><b>Upload instruction page</b><small>Reads the set number for exact brick codes</small></span><span>+</span></button>
           <button class="analyze" id="analyze"><span class="sparkle">✦</span> Analyze my build <span class="arrow">→</span></button>
           <p class="privacy">Your photos are used to analyse this build and then discarded. Nothing is stored unless you choose to report a wrong answer.</p>
@@ -82,7 +97,7 @@
           <div class="report-form hidden" id="report-form">
             <label for="report-note">What did it get wrong?</label>
             <textarea id="report-note" rows="2" maxlength="2000" placeholder="e.g. it missed the missing brick under the left arm"></textarea>
-            <p class="report-consent">Sending shares <b>both photos</b> and this analysis with the developer, so the mistake can be used to improve BrickCheck. They are kept for 90 days. Don't send photos you wouldn't want shared.</p>
+            <p class="report-consent">Sending shares <b>both photos</b> and this analysis with the developer, so the mistake can be used to improve BrickSolver. They are kept for 90 days. Don't send photos you wouldn't want shared.</p>
             <div class="report-actions">
               <button id="report-cancel" class="report-secondary">Cancel</button>
               <button id="report-send">Send photos and report</button>

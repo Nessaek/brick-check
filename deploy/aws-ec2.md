@@ -76,7 +76,7 @@ Then run it as a service that survives reboots, publishing on port 80:
 ```bash
 sudo tee /etc/systemd/system/brickcheck.service >/dev/null <<'EOF'
 [Unit]
-Description=BrickCheck
+Description=BrickSolver
 After=docker.service
 Requires=docker.service
 

@@ -1,6 +1,6 @@
-# BrickCheck
+# BrickSolver
 
-Upload a photo of a part-built LEGO model and a photo of how it should look. BrickCheck compares them with Claude's vision API and marks what's wrong: missing pieces, wrong pieces, wrong colours, wrong orientation, pieces in the wrong place.
+Upload a photo of a part-built LEGO model and a photo of how it should look. BrickSolver compares them with Claude's vision API and marks what's wrong: missing pieces, wrong pieces, wrong colours, wrong orientation, pieces in the wrong place.
 
 Both photos are required. The whole method is a comparison, so there's nothing useful to do with only one.
 
@@ -217,6 +217,25 @@ That writes the photos into `eval/cases/<name>/` with a placeholder
 the script deliberately does not copy the reported issues into it, because
 those are what the app got *wrong*, and enshrining them as expected would
 lock in the bug.
+
+## Finding a set by number
+
+Typing a set number fetches that set's official product photo from Rebrickable
+and uses it as the reference, so there is nothing to upload. The catalogue's
+answer — name, year, piece count, thumbnail — is shown for confirmation before
+it is used.
+
+It fetches the photo of the **finished** set, which makes it the wrong
+reference mid-build: every unbuilt piece would read as missing. Uploading an
+instruction page stays the option for step-level checking.
+
+Two things this exposed. Rebrickable serves PNG bytes from `.jpg` URLs under
+`Content-Type: image/jpeg` — both the extension and the header are wrong, and
+different sets genuinely differ — so the image type is sniffed from magic
+bytes; the Anthropic API rejects an image whose declared `media_type` does not
+match its content. And this makes render-versus-photo the default comparison,
+which is the harder one: see the note in the eval section about colour being
+unreliable against renders.
 
 ## Instruction pages and brick codes
 

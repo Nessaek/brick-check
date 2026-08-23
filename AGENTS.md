@@ -1,4 +1,4 @@
-# BrickCheck — working notes for agents
+# BrickSolver — working notes for agents
 
 A web app that compares a photo of a part-built LEGO model against a photo of
 how it should look, and tells you what's wrong: missing pieces, wrong pieces,
@@ -6,7 +6,7 @@ wrong colours, wrong orientation. Upload an instruction page instead of a
 finished photo and it also reads the printed set number and lists the exact
 bricks to order.
 
-Live at https://13.42.213.246.sslip.io/ — public, no password, deliberately.
+Live at https://bricksolver.com/ — public, no password, deliberately.
 
 ## Running it
 
@@ -78,6 +78,15 @@ several are counter-intuitive.
   "unknown" 3/3 on one image and two *different* wrong numbers on another,
   both at medium confidence — and one wrong number is a real set, so checking
   that it resolves does not catch it. Only read numbers printed on a page.
+- **Renders are not colour references.** Comparing a photo against an official
+  product render, colour differences are mostly the render and missing parts
+  are nearly invisible. Labelling six real builds this way, every colour
+  difference I "confirmed" was a rendering artifact and every real defect was a
+  missing piece. Control parts do not rescue it — the discrepancy is
+  per-colour, not a global cast.
+- **Do not trust Content-Type or file extensions.** Rebrickable serves PNG
+  bytes from `.jpg` URLs labelled `image/jpeg`. `sniffImageType` reads magic
+  bytes instead, because the Anthropic API rejects a mismatched `media_type`.
 - **There is no fine-tuning for Claude.** Improving accuracy means changing the
   prompt or pipeline and measuring against the eval. That is the whole loop.
 
