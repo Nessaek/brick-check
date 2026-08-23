@@ -79,16 +79,22 @@ deploy/terraform/                AWS deployment, as code.
 
 ## API
 
-`POST /api/analyze` takes both images as base64 data URLs:
+### `POST /api/analyze`
+
+Takes both images as base64 data URLs:
 
 ```json
 {
   "image": "data:image/jpeg;base64,...",
-  "referenceImage": "data:image/jpeg;base64,..."
+  "referenceImage": "data:image/jpeg;base64,...",
+  "referenceKind": "photo",
+  "setNumber": "10309"
 }
 ```
 
-Both fields are required. The response:
+`image` and `referenceImage` are required. `referenceKind` is `photo` (default)
+or `instructions` — the latter opts into reading the page for a set number and
+step. `setNumber` is optional and, when given, beats anything read off a page. The response:
 
 ```json
 {
@@ -117,6 +123,52 @@ Both fields are required. The response:
 - `aligned` is true when the reference was warped onto the build's viewpoint; `alignReason` says why not when it's false.
 - `alignedReference` carries the warped reference as a data URL when aligned, so the UI can crop matching regions.
 - `verified` is true when the second-pass check ran. `rejected` lists candidates it discarded and why.
+- `set` carries `{number, name, step}` when a set number is known, else null. `partsSource` is `catalogue` when part codes came from the set's real inventory, `none` otherwise.
+- `feedback` is true when the server can store a reported mistake, which is what shows the report button.
+- Issues may carry `parts`: a ranked shortlist of candidate bricks, best first, each with `partNum`, `elementId`, `name`, `colorName` and `imageUrl`.
+
+### `POST /api/set`
+
+Looks a set up by number and returns its official photo, so nothing has to be
+uploaded. Requires `REBRICKABLE_API_KEY`; without it the endpoint answers 501.
+
+```json
+{ "setNumber": "10309" }
+```
+
+```json
+{
+  "number": "10309",
+  "name": "Succulents",
+  "year": 2022,
+  "parts": 771,
+  "image": "data:image/png;base64,..."
+}
+```
+
+- The image is the **finished** set, so it is the wrong reference mid-build.
+- Its media type is sniffed from magic bytes, not from the upstream
+  `Content-Type`, which is wrong for some sets.
+- 404 if no such set, 502 if the catalogue is unreachable.
+
+### `POST /api/feedback`
+
+Stores one submission a user reported as wrong. Requires `FEEDBACK_BUCKET` (or
+`FEEDBACK_DIR`); without either it answers 501 and the UI hides the button.
+
+```json
+{
+  "image": "data:image/jpeg;base64,...",
+  "referenceImage": "data:image/jpeg;base64,...",
+  "note": "it missed the missing foot",
+  "analysis": { "issues": [] }
+}
+```
+
+Responds `{ "ok": true, "id": "..." }`. This is the only endpoint that retains
+a user's photos, and only when they ask it to.
+
+All three endpoints share the per-IP rate limit.
 
 ## Deploying
 
