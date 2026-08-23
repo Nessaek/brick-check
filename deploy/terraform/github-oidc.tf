@@ -22,7 +22,7 @@ variable "create_oidc_provider" {
 variable "github_repo" {
   description = "owner/name of the repository allowed to deploy."
   type        = string
-  default     = "Nessaek/brick-check"
+  default     = "Nessaek/bricksolver"
 }
 
 variable "github_deploy_ref" {

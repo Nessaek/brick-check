@@ -28,7 +28,7 @@ variable "instance_type" {
 variable "repo_url" {
   description = "Git repository cloned and built on the instance."
   type        = string
-  default     = "https://github.com/Nessaek/brick-check.git"
+  default     = "https://github.com/Nessaek/bricksolver.git"
 }
 
 variable "api_key_parameter" {

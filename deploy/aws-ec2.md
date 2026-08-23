@@ -48,7 +48,7 @@ Log out and back in so the group change applies.
 Building on the instance avoids pushing a 1GB image over your home connection.
 
 ```bash
-git clone https://github.com/Nessaek/brick-check.git && cd brick-check
+git clone https://github.com/Nessaek/bricksolver.git && cd bricksolver
 ```
 
 ```bash
