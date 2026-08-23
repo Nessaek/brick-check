@@ -1,0 +1,6 @@
+{
+  "description": "LEGO Plum Blossom vs official render. UNCONFIRMED. The branches photograph dark grey against reddish brown in the render, but the same comparison suggested a colour defect in the succulents case that turned out to be a rendering difference, so this needs the builder's word before it is trusted. The blossom centres (yellow crown, magenta collar) match.",
+  "defects": [],
+  "tolerance": 22,
+  "_todo": "Confirm with the builder what was actually changed, then fill in defects[] and move back to cases/."
+}

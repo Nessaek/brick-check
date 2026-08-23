@@ -1,0 +1,15 @@
+{
+  "description": "LEGO Succulents (10309) vs official product render. The centre of the purple lotus has a red round piece where the set uses a grey one. Confirmed by the builder. Note the spiky aloe leaves also read aqua here against sage green in the render — that is the render, not the build, and it is a trap: an issue reported there is not a defect.",
+  "defects": [
+    {
+      "x": 48,
+      "y": 46,
+      "label": "red piece in the centre of the purple lotus, should be grey",
+      "types": ["WRONG PIECE", "MISPLACED PIECE"]
+    }
+  ],
+  "ignore": [
+    { "x": 33, "y": 41, "radius": 12, "label": "aloe leaves photograph aqua but match the set; the render is the outlier" }
+  ],
+  "tolerance": 15
+}
