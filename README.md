@@ -34,19 +34,19 @@ No npm dependencies, no build step. Set `PORT` and `CLAUDE_MODEL` in `.env` if y
 
 ## How it works
 
-The naive version doesn't work. I tried it: one call, two photos, "what's different?", against a mosaic with a brick removed. It found nothing. So most of the pipeline is about pointing the model at a smaller piece of the picture.
+The obvious version doesn't work. One call, two photos, "what's different?", against a mosaic with a brick removed: it found nothing. The rest of the pipeline exists to point the model at a smaller piece of the picture.
 
-**Alignment.** `preprocess/align.py` warps the reference onto the build's viewpoint and matches the colour histogram, so a photo shot under a warm bulb doesn't read as a wall of wrong-coloured bricks. There are two routes. Frame detection looks for the build's rectangular border and is exact when there is one. Failing that, SIFT feature matching handles free-standing models. Frame detection alone worked on 2 of 9 cases, both of them synthetic, which meant alignment was effectively switched off for every real photograph. Each candidate transform gets sanity-checked and then correlated against the build photo, and anything under 0.45 is thrown out, because a confidently wrong alignment is worse than none at all. One attempt locked onto the speckle in a granite worktop instead of the model and scored 0.27.
+**Alignment.** `preprocess/align.py` warps the reference onto the build's viewpoint and matches its colour, using the build's rectangular frame where there is one and SIFT features where there isn't. Every transform is scored against the build photo and anything under 0.45 is binned, because a confidently wrong alignment is worse than none. One attempt locked onto the speckle in a granite worktop and scored 0.27.
 
-**Difference detection.** With the photos registered, they're compared by average colour per brick-sized cell. Per-pixel comparison is useless here: a pixel or two of leftover misalignment lights up every stud edge and buries the real defect. Averaging over a cell cancels it out. The strongest candidates get sent to Claude as zoomed before/after crops.
+**Difference detection.** The aligned pair is compared by average colour per brick-sized cell. Per-pixel comparison is useless: a pixel of leftover misalignment lights up every stud edge and buries the defect. The strongest candidates go to Claude as zoomed before/after crops.
 
-**Coordinate grid.** `preprocess/grid.py` stamps a labelled percentage grid onto the copy of the photo that goes to Claude, so it can read positions off the gridlines rather than guess. Before that, markers were landing 20+ points away from the thing they were describing. The photo you see in the browser stays clean.
+**Coordinate grid.** `preprocess/grid.py` stamps a labelled percentage grid on the copy sent to Claude, so it reads positions off gridlines instead of guessing. Before that, markers landed 20+ points from the thing they described. The photo you see stays clean.
 
-**The request.** Answers come back through a `report_build_issues` tool schema instead of prose. I deliberately don't force the tool call. Forcing it skips the reasoning pass where the model actually looks at the image, and detection measurably suffers. If it replies without calling the tool, the server retries with it forced.
+**The request.** Answers come back through a tool schema rather than prose, and the tool call isn't forced. Forcing it skips the reasoning pass where the model actually looks at the image, and detection measurably suffers.
 
-**Verification.** Every reported issue gets a second look. `preprocess/crop.py` cuts a close-up of the spot and Claude decides whether it's a genuine defect or something explained by the camera angle, a shadow, or a hinged part that's just posed differently. It has to give a concrete reason to reject, and anything uncertain stays in, which protects recall.
+**Verification.** Each issue gets a second call against a close-up crop, to separate real defects from camera angle, shadow and posable parts. Rejecting needs a concrete reason, and anything uncertain stays in.
 
-Every one of those earned its place against the [eval suite](#does-it-actually-work). Several other perfectly reasonable ideas didn't and were dropped.
+All five earned their place against the [eval suite](#does-it-actually-work). Several other reasonable-sounding ideas didn't.
 
 ## Image processing
 
