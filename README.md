@@ -1,79 +1,56 @@
 # BrickSolver
 
-Upload a photo of a part-built LEGO model and a photo of how it should look. BrickSolver compares them with Claude's vision API and marks what's wrong: missing pieces, wrong pieces, wrong colours, wrong orientation, pieces in the wrong place.
+Take a photo of a half-built LEGO model, add a photo of how it's meant to look, and BrickSolver marks up what's wrong: missing pieces, wrong pieces, wrong colours, things facing the wrong way, things in the wrong place.
 
-Both photos are required. The whole method is a comparison, so there's nothing useful to do with only one.
+You need both photos. It works by comparing them, so one on its own is no use.
 
 Live at **https://bricksolver.com**.
 
-## Why this exists
+## Why I built it
 
-I love LEGO, and it is easy to make mistakes in a build. A piece goes on one
-stud over, or you grab the wrong shade of grey, and you find out forty steps
-later when something will not line up. I wanted something that would tell me
-straight away, so I built this to identify those mistakes.
+I love LEGO and I make mistakes constantly. A plate goes on one stud over, or I grab the wrong grey, and I don't find out until forty steps later when a section won't close up. By then, finding the error means taking half of it apart. I wanted something that would just tell me.
 
-I was surprised by how difficult it turned out to be. My assumption was that
-the hard part would be plumbing — upload two photos, ask a model what is
-different, render the answer. In practice, asking that question directly finds
-nothing: a missing brick is a few percent of the frame, and a vision model
-spreads its attention across the whole picture. Almost everything in
-[How it works](#how-it-works) exists to concentrate that attention somewhere
-smaller, and each stage had to be measured, because roughly half the ideas that
-sounded obviously right made the results worse.
+I assumed the hard part would be the plumbing. Upload two photos, ask a model what's different, draw the answer on screen. It turns out asking that question directly gets you nothing at all. A missing brick is maybe 4% of the frame, and the model's attention is spread over the other 96%. Nearly everything in [How it works](#how-it-works) is there to narrow that attention down, and every stage had to be checked against real cases, because about half the things that seemed obviously correct made it worse.
 
-**Occlusion is the thing the AI really struggles with.** A LEGO build is a 3-D
-object, and any single photo hides part of it. The model cannot tell a piece
-that is missing from a piece that is behind something, so it confidently
-reports parts as absent when they are simply out of view. There is a whole
-paragraph of prompt fighting this, with a worked example, and it still costs
-accuracy in both directions — it suppresses real finds as well as false ones.
-It is not a prompt problem, it is a geometry problem: you cannot resolve it
-from one viewpoint, and the honest fix is several photos or a real 3-D
-reference. That is the first thing I would build next.
+The bit that genuinely defeated me is occlusion. A LEGO build is a solid object and one photograph only shows you part of it. The model can't tell the difference between a piece that's missing and a piece that's round the back, so it announces missing arms on a model that's simply facing away. I've got an entire paragraph of prompt arguing with it about this, complete with a worked example, and it still gets it wrong in both directions: it invents absences, and the fix for that makes it timid about real ones. No amount of rewording will solve it. You can't recover a 3-D fact from one 2-D view. It needs several photos or an actual 3-D model of the set, and that's what I'd build next.
 
-The second surprise was how unreliable my own judgement was. Labelling six
-builds against official product photos, I confidently identified colour swaps
-in four of them. Every single one was a rendering artifact, and every real
-defect was a missing piece I had walked straight past. Renders do not reproduce
-LEGO colours the way a phone camera does, and absence is much harder to notice
-than difference — for people as well as models.
+The other surprise was how misleading this comparison is even to a human eye. I put six of my own builds up against official product renders with one deliberate mistake in each. What leaps out of those pairs is colour: leaves that look mint against sage, branches that look grey against brown. Almost none of it is real, because renders don't reproduce LEGO colours the way a phone camera does. The planted mistakes were missing pieces every single time, and a missing piece is the thing you scroll straight past, because there's nothing there to catch your eye. Absence is much harder to spot than difference, and that seems to be true of people as well as models.
 
 ## Running it
 
-Needs Node 18+ and an [Anthropic API key](https://console.anthropic.com/). Python 3 with OpenCV is technically optional but see [Image processing](#image-processing) — the app is much worse without it.
+You need Node 18+ and an [Anthropic API key](https://console.anthropic.com/). Python with OpenCV is nominally optional, but read [Image processing](#image-processing) first — without it the app is a lot worse.
 
 ```bash
-cp .env.example .env      # then add your ANTHROPIC_API_KEY
+cp .env.example .env      # add your ANTHROPIC_API_KEY
 ```
 
 ```bash
 npm start
 ```
 
-Open http://localhost:3000. Analysis takes 20–60 seconds and costs roughly $0.02 per run.
+Then open http://localhost:3000. A run takes 20–60 seconds and costs about $0.02.
 
-There are no npm dependencies and no build step. `PORT` and `CLAUDE_MODEL` can be set in `.env`; the active model is printed at startup.
+No npm dependencies, no build step. Set `PORT` and `CLAUDE_MODEL` in `.env` if you want; the model in use is printed at startup.
 
 ## How it works
 
-A single "here are two photos, what's different?" API call doesn't work well. Tested against a mosaic photo with one brick removed, it found nothing — the defect was about 4% of the frame, and a vision model spreads its attention over the whole image. Most of the pipeline exists to concentrate attention on the parts that matter.
+The naive version doesn't work. I tried it: one call, two photos, "what's different?", against a mosaic with a brick removed. It found nothing. So most of the pipeline is about pointing the model at a smaller piece of the picture.
 
-**Alignment.** `preprocess/align.py` warps the reference onto the build's viewpoint and histogram-matches the colour. Without this, a photo taken in warm light reads as wrong-coloured bricks. It tries two routes: the build's rectangular frame, which is exact where it exists, then SIFT feature matching for free-standing models that have no frame at all. Frame detection alone engaged on 2 of 9 eval cases — both synthetic — so alignment was off for every real photo. Every homography is validated for plausibility and then correlated against the build; anything below 0.45 is rejected, because a wrong alignment is worse than none. One photo aligned to a granite worktop's speckle instead of the model and scored 0.27.
+**Alignment.** `preprocess/align.py` warps the reference onto the build's viewpoint and matches the colour histogram, so a photo shot under a warm bulb doesn't read as a wall of wrong-coloured bricks. There are two routes. Frame detection looks for the build's rectangular border and is exact when there is one. Failing that, SIFT feature matching handles free-standing models. Frame detection alone worked on 2 of 9 cases, both of them synthetic, which meant alignment was effectively switched off for every real photograph. Each candidate transform gets sanity-checked and then correlated against the build photo, and anything under 0.45 is thrown out, because a confidently wrong alignment is worse than none at all. One attempt locked onto the speckle in a granite worktop instead of the model and scored 0.27.
 
-**Difference detection.** Once the photos are registered, the two are diffed by mean colour per brick-sized cell. Per-pixel diffing doesn't work — a pixel or two of residual alignment error puts ghosting on every stud edge, which drowns out the real defect. Averaging over a cell cancels that. The strongest candidates go to Claude as zoomed crop pairs.
+**Difference detection.** With the photos registered, they're compared by average colour per brick-sized cell. Per-pixel comparison is useless here: a pixel or two of leftover misalignment lights up every stud edge and buries the real defect. Averaging over a cell cancels it out. The strongest candidates get sent to Claude as zoomed before/after crops.
 
-**Coordinate grid.** `preprocess/grid.py` overlays a labelled percentage grid on the copy of the photo sent to Claude, so it reads coordinates off gridlines instead of estimating them. Before this, pins landed 20+ points from the defect. The photo shown in the UI stays clean.
+**Coordinate grid.** `preprocess/grid.py` stamps a labelled percentage grid onto the copy of the photo that goes to Claude, so it can read positions off the gridlines rather than guess. Before that, markers were landing 20+ points away from the thing they were describing. The photo you see in the browser stays clean.
 
-**The request.** Results come back through a `report_build_issues` tool schema rather than as prose. The tool call isn't forced: forcing it skips the reasoning pass where the model examines the image, which measurably hurts detection. If the model answers without calling the tool, the server retries with it forced.
+**The request.** Answers come back through a `report_build_issues` tool schema instead of prose. I deliberately don't force the tool call. Forcing it skips the reasoning pass where the model actually looks at the image, and detection measurably suffers. If it replies without calling the tool, the server retries with it forced.
 
-**Verification.** Each reported issue gets a second call. `preprocess/crop.py` cuts a zoomed close-up of the claimed spot, and Claude decides whether it's a real defect or something explained by camera angle, lighting, or a posable part. Rejection needs a concrete reason and uncertainty defaults to keeping the issue, which protects recall. On the suite as it stood this cut false positives from about 2 per run to under 1.
+**Verification.** Every reported issue gets a second look. `preprocess/crop.py` cuts a close-up of the spot and Claude decides whether it's a genuine defect or something explained by the camera angle, a shadow, or a hinged part that's just posed differently. It has to give a concrete reason to reject, and anything uncertain stays in, which protects recall.
 
-Each stage stayed because the [eval suite](#evaluating-detection-quality) showed it helped. Several plausible ideas were measured and dropped.
+Every one of those earned its place against the [eval suite](#does-it-actually-work). Several other perfectly reasonable ideas didn't and were dropped.
 
 ## Image processing
 
-Alignment, the coordinate grid and verification all depend on Python and OpenCV, and all three are gated on one check at startup (`python3 -c "import cv2, numpy"`). If it fails you lose all three at once and the app keeps working at noticeably lower accuracy.
+Alignment, the coordinate grid and verification all need Python and OpenCV. All three hang off a single check at startup (`python3 -c "import cv2, numpy"`), so if that fails you lose the lot at once and the app carries on at noticeably worse accuracy.
 
 ```bash
 python3 -m venv preprocess/.venv
@@ -83,40 +60,41 @@ python3 -m venv preprocess/.venv
 preprocess/.venv/bin/pip install -r preprocess/requirements.txt
 ```
 
-The server picks up that virtualenv automatically. System Python works too.
+The server finds that virtualenv on its own. System Python is fine too.
 
-Check the startup log:
+Check the startup log says:
 
 ```
 Image processing enabled — photo alignment, coordinate grid and zoomed issue verification are all active.
 ```
 
-The alternative is `Image processing DISABLED`, which means the Python stack isn't there.
+If it says `Image processing DISABLED`, the Python side isn't there.
 
-Alignment engages on about half the eval cases: framed mosaics via frame detection, free-standing models via feature matching, and it declines the rest rather than guessing. When it fails the original photos are used and the reason comes back in `alignReason`. The `mosaic-*` fixtures cover the frame path; regenerate them with `preprocess/.venv/bin/python3 eval/make-mosaic-fixtures.py`.
+Alignment engages on roughly half the eval cases and declines the rest rather than guessing. When it declines, the original photos are used and the reason comes back in `alignReason`. The `mosaic-*` fixtures cover the frame-detection path and can be regenerated with `preprocess/.venv/bin/python3 eval/make-mosaic-fixtures.py`.
 
-`eval/align_selftest.py` checks this stage without spending anything — it asserts a known missing tile still produces a candidate region, a known-clean pair still produces none, and a known-bad match is still rejected. CI runs it on every push. It exists because the diff threshold was unreachable for a long time and nothing failed; the stage just quietly stopped contributing.
+There's also `eval/align_selftest.py`, which tests this stage for free. It checks that a known missing tile still produces a candidate region, a known-good pair still produces none, and a known-bad match is still rejected. CI runs it on every push. It exists because the diff threshold was quietly unreachable for months: nothing errored, the stage just stopped contributing anything and no one noticed.
 
 ## Layout
 
 ```
 index.html, app.js, styles.css   Front end. No framework, no build step.
-server.js                        Static files, /api/analyze, the pipeline.
-preprocess/align.py              Alignment (frame + features), colour match, cell diff.
+server.js                        Static files, the API, the pipeline.
+feedback.js                      Stores reported mistakes in S3.
+preprocess/align.py              Alignment, colour match, cell diff.
 preprocess/grid.py               Coordinate grid overlay.
 preprocess/crop.py               Zoomed crops for verification.
-eval/run.js                      Scores the API against known ground truth.
+eval/run.js                      Scores the API against known answers.
 eval/cases/<name>/               build.jpg + reference.jpg + expected.json
 Dockerfile                       Node + Python image.
-deploy/aws-ec2.md                AWS deployment, by hand.
-deploy/terraform/                AWS deployment, as code.
+deploy/terraform/                AWS, as code.
+deploy/aws-ec2.md                The same thing by hand.
 ```
 
 ## API
 
 ### `POST /api/analyze`
 
-Takes both images as base64 data URLs:
+Both images as base64 data URLs:
 
 ```json
 {
@@ -127,9 +105,7 @@ Takes both images as base64 data URLs:
 }
 ```
 
-`image` and `referenceImage` are required. `referenceKind` is `photo` (default)
-or `instructions` — the latter opts into reading the page for a set number and
-step. `setNumber` is optional and, when given, beats anything read off a page. The response:
+`image` and `referenceImage` are required. `referenceKind` is `photo` (the default) or `instructions`, which opts into reading the page for a set and step number. `setNumber` is optional and overrides anything read off a page.
 
 ```json
 {
@@ -153,19 +129,13 @@ step. `setNumber` is optional and, when given, beats anything read off a page. T
 }
 ```
 
-- Issue types are `MISSING PIECE`, `WRONG ORIENTATION`, `WRONG PIECE`, `MISPLACED PIECE`. Up to 8 per analysis.
-- `x` and `y` are percentages of the build photo, used to place the markers.
-- `aligned` is true when the reference was warped onto the build's viewpoint; `alignReason` says why not when it's false.
-- `alignedReference` carries the warped reference as a data URL when aligned, so the UI can crop matching regions.
-- `verified` is true when the second-pass check ran. `rejected` lists candidates it discarded and why.
-- `set` carries `{number, name, step}` when a set number is known, else null. `partsSource` is `catalogue` when part codes came from the set's real inventory, `none` otherwise.
-- `feedback` is true when the server can store a reported mistake, which is what shows the report button.
-- Issues may carry `parts`: a ranked shortlist of candidate bricks, best first, each with `partNum`, `elementId`, `name`, `colorName` and `imageUrl`.
+Issue types are `MISSING PIECE`, `WRONG ORIENTATION`, `WRONG PIECE` and `MISPLACED PIECE`, up to 8 per run. `x` and `y` are percentages of the build photo, which is how the markers get placed. `aligned` says whether the reference was warped onto the build's viewpoint, with `alignReason` explaining a no. `alignedReference` carries the warped version when there is one, so the UI can crop matching regions. `verified` says the second pass ran, and `rejected` lists what it threw out and why.
+
+`set` holds `{number, name, step}` when a set number is known. `partsSource` is `catalogue` when part codes came from the set's real inventory. `feedback` says whether the server can store a reported mistake, which is what decides if the report button appears. Individual issues may carry `parts`, a ranked shortlist of candidate bricks.
 
 ### `POST /api/set`
 
-Looks a set up by number and returns its official photo, so nothing has to be
-uploaded. Requires `REBRICKABLE_API_KEY`; without it the endpoint answers 501.
+Looks up a set by number and returns its official photo, so there's nothing to upload. Needs `REBRICKABLE_API_KEY`; without it you get a 501.
 
 ```json
 { "setNumber": "10309" }
@@ -181,15 +151,11 @@ uploaded. Requires `REBRICKABLE_API_KEY`; without it the endpoint answers 501.
 }
 ```
 
-- The image is the **finished** set, so it is the wrong reference mid-build.
-- Its media type is sniffed from magic bytes, not from the upstream
-  `Content-Type`, which is wrong for some sets.
-- 404 if no such set, 502 if the catalogue is unreachable.
+The image is of the finished set, which makes it the wrong reference if you're halfway through. The media type is sniffed from the file's magic bytes rather than taken from the upstream `Content-Type`, which is wrong for some sets. 404 for an unknown set, 502 if the catalogue is down.
 
 ### `POST /api/feedback`
 
-Stores one submission a user reported as wrong. Requires `FEEDBACK_BUCKET` (or
-`FEEDBACK_DIR`); without either it answers 501 and the UI hides the button.
+Stores one submission that a user reported as wrong. Needs `FEEDBACK_BUCKET` (or `FEEDBACK_DIR` locally), otherwise it returns 501 and the UI hides the button.
 
 ```json
 {
@@ -200,14 +166,13 @@ Stores one submission a user reported as wrong. Requires `FEEDBACK_BUCKET` (or
 }
 ```
 
-Responds `{ "ok": true, "id": "..." }`. This is the only endpoint that retains
-a user's photos, and only when they ask it to.
+Returns `{ "ok": true, "id": "..." }`. This is the only endpoint that keeps anyone's photos, and only when they ask it to.
 
-All three endpoints share the per-IP rate limit.
+All three share a per-IP rate limit.
 
 ## Deploying
 
-Python and OpenCV need to be present, which rules out serverless runtimes that can't run them. Use a container host or a small VM. The app holds no state, so no volume or database is needed.
+Python and OpenCV have to be present, which rules out serverless runtimes that can't run them. A container host or a small VM is fine. The app keeps no state, so there's no volume or database to worry about.
 
 ```bash
 docker build -t brickcheck .
@@ -217,134 +182,64 @@ docker build -t brickcheck .
 docker run -p 3000:3000 -e ANTHROPIC_API_KEY=sk-ant-... -e APP_PASSWORD=choose-one brickcheck
 ```
 
-The image has been built and run for `linux/amd64` with OpenCV 5.0 working inside it. After deploying, check the log says `Image processing enabled` and `Password protection enabled`. `Image processing DISABLED` means the Python layer didn't build, and the app will answer at reduced accuracy while looking fine.
+Built and run for `linux/amd64` with OpenCV 5.0 working inside. Afterwards, check the log. `Image processing DISABLED` means the Python layer didn't build and the app will happily answer at reduced accuracy while looking perfectly healthy.
 
 | Variable | Purpose |
 | --- | --- |
 | `ANTHROPIC_API_KEY` | Required. Don't bake it into the image. |
-| `APP_PASSWORD` | Shared password (HTTP Basic). Unset means no authentication and anyone who can reach the server can spend your API credit. |
-| `REBRICKABLE_API_KEY` | Optional. Enables exact brick codes for issues when an instruction page carries a printed set number. Unset, the app links to the set's parts list instead of naming codes. |
-| `FEEDBACK_BUCKET` | Optional. S3 bucket for submissions a user reports as wrong. Unset, the report button is hidden and no photos are stored. `FEEDBACK_DIR` is the local-filesystem equivalent for development. |
-| `TRUST_PROXY` | Set to `1` only behind a load balancer that sets `X-Forwarded-For`. The Dockerfile defaults it on; unset it if the container is exposed directly, or the rate limit can be spoofed. |
+| `APP_PASSWORD` | Shared password over HTTP Basic. Leave it unset and anyone who finds the URL can spend your API credit. |
+| `REBRICKABLE_API_KEY` | Optional. Turns on set lookup and exact brick codes. Without it the app links to the parts list instead of naming codes. |
+| `FEEDBACK_BUCKET` | Optional. S3 bucket for reported mistakes. Without it the report button is hidden and nothing is stored. `FEEDBACK_DIR` is the local equivalent. |
+| `TRUST_PROXY` | Set to `1` only behind something that sets `X-Forwarded-For`. On by default in the Dockerfile; unset it if the container is directly exposed, or the rate limit can be spoofed. |
 | `HOST` | Bind address, default `0.0.0.0`. Use `127.0.0.1` to keep it off the local network. |
 | `PORT`, `CLAUDE_MODEL` | Optional. |
 
-The app doesn't meter or cap spend. Set a spend limit on your Anthropic account instead. Before exposing it to anyone else, set that limit and raise your proxy's request timeout above 60 seconds. `APP_PASSWORD` is the other lever: with it unset the site is open to anyone who finds it, so the account limit is all that bounds the bill. The rate limiter is in-memory, so it resets on restart and is per-instance.
+The app doesn't meter spend. Put a limit on your Anthropic account, because that's the only thing that actually caps the bill. Raise your proxy's request timeout above 60 seconds too, since analyses regularly run longer than that. The rate limiter lives in memory, so it resets on restart and doesn't coordinate between instances.
 
-AWS deployments are covered two ways:
+For AWS there are two paths: [`deploy/terraform/`](deploy/terraform/) does the whole thing as code, with secrets in SSM so they never touch Terraform state, and [`deploy/aws-ec2.md`](deploy/aws-ec2.md) walks through the same setup by hand if you'd rather see each step.
 
-- [`deploy/terraform/`](deploy/terraform/) — Terraform/OpenTofu for the whole thing: security group, IAM role, and an instance that builds and runs the app on first boot. Secrets go in SSM rather than through Terraform, so they never land in state.
-- [`deploy/aws-ec2.md`](deploy/aws-ec2.md) — the same setup done by hand, if you would rather see each step.
+### Just for yourself
 
-### Running it just for yourself
+If it's only for you, don't deploy it at all. Run it locally and reach it from your phone over Tailscale. Nothing is exposed, the key never leaves your machine, and there's no bill.
 
-If it's only for you, don't deploy it. Run it locally and reach it from your phone over Tailscale — nothing is exposed, the key never leaves the machine, and there's no hosting bill.
-
-`com.bricksolver.server.plist` is a macOS LaunchAgent template that keeps the server running across logins. Edit the paths, copy it to `~/Library/LaunchAgents/`, then bootstrap it. It sets `HOST=127.0.0.1` so the app stays on loopback, and reads the API key from `.env` rather than holding it.
+`com.bricksolver.server.plist` is a macOS LaunchAgent template that keeps the server running across logins. Fill in the paths, drop it in `~/Library/LaunchAgents/`, bootstrap it. It pins `HOST=127.0.0.1` and reads the key from `.env`.
 
 ```bash
 tailscale serve --bg 3000
 ```
 
-That publishes the loopback port to your own devices over HTTPS. Avoid `tailscale funnel`, which publishes to the internet — at that point `APP_PASSWORD` is no longer optional.
+That publishes the loopback port to your own devices over HTTPS. Don't use `tailscale funnel` unless you've set `APP_PASSWORD`, because that publishes to the internet.
 
 ```bash
-launchctl kickstart -k gui/$UID/com.brickcheck.server
+launchctl kickstart -k gui/$UID/com.bricksolver.server
 ```
 
-`launchctl print gui/$UID/com.brickcheck.server` shows state, output goes to `server.log`, and `launchctl bootout` stops it.
+`launchctl print gui/$UID/com.bricksolver.server` shows the state, output goes to `server.log`, and `launchctl bootout` stops it.
 
-## Evaluating detection quality
+## Does it actually work
 
-`eval/run.js` scores the pipeline against photo pairs with known answers. Run it after changing the prompt, the model, or the image processing.
+`eval/run.js` scores the pipeline against photo pairs where I know the answer. Worth running after touching the prompt, the model, or the image processing.
 
 ```bash
 npm start     # one terminal
 npm run eval  # another
 ```
 
-Each case is a directory under `eval/cases/` holding `build.jpg`, `reference.jpg` and an `expected.json` listing the known defects, or an empty list for a correct build. A defect counts as caught when a reported issue lands within ±12 percentage points of its true position. Cases can override that with `"tolerance"`, list alternate acceptable positions with `"alt"` (for a defect that could fairly be pinned in two places, like a detached piece and the gap it came from), and mark known non-defect differences with `"ignore"` so they're neither credited nor penalised.
+Each case is a folder under `eval/cases/` with `build.jpg`, `reference.jpg` and an `expected.json` listing the defects, or an empty list for a build that's correct. A defect counts as caught if a reported issue lands within ±12 points of where it actually is. Cases can override the tolerance, list alternative acceptable positions with `alt` (for something like a detached leaf, where pointing at the leaf or the gap it left are both fair), and mark known non-defect differences with `ignore` so they're neither rewarded nor punished.
 
-To add a case, photograph a build complete, remove or swap a piece, photograph it again, and record what changed. Each case costs one or two API calls per run.
+To add one: photograph the finished build, take a piece off, photograph it again, write down what you changed.
 
-### Current results
+### Where it stands
 
-Nine cases: a generated framed mosaic, two LEGO Botanicals plants, and a pink creature compared against its product photo.
+16 cases, 15 labelled defects, 3 correct builds as controls. Seven of them are recent: real builds photographed at home and compared against official product renders, with a genuine mistake planted in each. That combination is both the most realistic and the hardest, and it's new, so expect it to score worse than the older set did.
 
-## Learning from real mistakes
+On the previous nine cases, five runs of identical code scored anywhere from 4/9 to 7/9, and a later three runs went 5, 8, 5. **One run tells you almost nothing.** The 8 and one of the 5s were consecutive with no code change between them. Judge anything on two or three runs, and treat a single case flipping as noise until it repeats.
 
-There is no fine-tuning. The Claude API has no such endpoint, so the model is
-fixed and the only things you can change are the prompt, the pipeline and the
-evidence you change them against. That evidence is the eval suite, which makes
-a real failure the most valuable thing this app can collect.
+The suite hasn't been run in full since it doubled in size.
 
-Normal analyses store nothing — photos go to a temp directory and are deleted
-in a `finally` block. The single exception is the **report a wrong answer**
-button, which sends that one submission, with its two photos and the analysis
-the user saw, to `FEEDBACK_BUCKET`. It is opt-in, it says plainly what it
-sends, and it is hidden entirely when no bucket is configured, so the offer is
-never made falsely.
+The most stubborn failure is still a correct build shot from two angles, where pieces that are simply out of frame get reported missing.
 
-Failures only, not everything. Successes are the overwhelming majority and are
-worth nothing here, and logging them would mean holding far more photos of
-people's homes for no benefit. Retention is enforced by an S3 lifecycle rule
-(90 days by default) rather than by intention.
-
-The instance can `PutObject` and nothing else — no read, no list. A compromised
-app can add objects but cannot retrieve what other people reported. Pull one
-down with your own credentials and turn it into a case:
-
-```bash
-aws s3 sync s3://<bucket>/<id>/ /tmp/<id>/ --region eu-west-2
-node eval/promote-feedback.js /tmp/<id> a-short-case-name
-```
-
-That writes the photos into `eval/cases/<name>/` with a placeholder
-`expected.json`. You then fill in `defects[]` with where the real problem is —
-the script deliberately does not copy the reported issues into it, because
-those are what the app got *wrong*, and enshrining them as expected would
-lock in the bug.
-
-## Finding a set by number
-
-Typing a set number fetches that set's official product photo from Rebrickable
-and uses it as the reference, so there is nothing to upload. The catalogue's
-answer — name, year, piece count, thumbnail — is shown for confirmation before
-it is used.
-
-It fetches the photo of the **finished** set, which makes it the wrong
-reference mid-build: every unbuilt piece would read as missing. Uploading an
-instruction page stays the option for step-level checking.
-
-Two things this exposed. Rebrickable serves PNG bytes from `.jpg` URLs under
-`Content-Type: image/jpeg` — both the extension and the header are wrong, and
-different sets genuinely differ — so the image type is sniffed from magic
-bytes; the Anthropic API rejects an image whose declared `media_type` does not
-match its content. And this makes render-versus-photo the default comparison,
-which is the harder one: see the note in the eval section about colour being
-unreliable against renders.
-
-## Instruction pages and brick codes
-
-Uploading an instruction page instead of a photo is optional and changes two things.
-
-The page is read first, for the set number, step number and printed parts callout, and that context is added to the comparison prompt — the callout in particular tells the model which pieces are meant to exist *at this step*, so a piece belonging to a later step is not reported missing.
-
-If `REBRICKABLE_API_KEY` is set and a set number was printed on the page, the set's real inventory is fetched and each missing or wrong piece is matched against it. Two things make that work.
-
-The tool schema's `enum` is built from that inventory, so a part number that is not in your set cannot be returned at all.
-
-And it returns a ranked **shortlist**, not an answer. Forced to name one part it was wrong on 4 of 4 attempts at a missing drum foot, choosing a thin dark-blue plate for a tall pale-blue brick. Asked for up to three candidates it included the right part on 3 of 4 and ranked it first every time. Committing is the hard part; ranking is not — so the UI shows the candidates as thumbnails and you pick, which takes about a second. Passing the build photo into this pass was tried and measured worse (2 of 4, the failures being empty answers), so it stays text-only.
-
-Element IDs (part + colour) are shown where available, since that is what LEGO's own replacement-parts service takes; design IDs otherwise. One part number can appear in several colours in the same set, and each is a different element ID, so the colours are offered as separate candidates.
-
-What it will not do is guess a set number from a photo of the model. Measured on this repo's own images, that returned `unknown` on three of three attempts for one photo and two *different* wrong set numbers for another, both at medium confidence — and one of those wrong numbers is a real set, so checking that the number resolves would not have caught it. A printed number is read; an unprinted one is left alone.
-
-Across five runs of identical code the suite scored anywhere from 4/9 to 7/9 cases, 4–8 defects caught, and 2–3 false positives. **A single run tells you very little** — the 4/9 and a 7/9 were consecutive runs with no changes between them. Judge changes on two or three runs, and treat one case flipping as noise until it repeats.
-
-The most persistent failure is a correct build photographed from two angles, where parts that are simply out of frame get reported as missing.
-
-When the verification pass discards a candidate, the runner says so, because a first-pass miss and a wrongly-rejected candidate need opposite fixes:
+When the verification pass throws out a candidate, the runner says so, because a first-pass miss and a wrongly-rejected candidate want opposite fixes:
 
 ```
 MISSED  yellow plates removed from pot front
@@ -352,18 +247,59 @@ MISSED  yellow plates removed from pot front
           "The marked spot shows only the background floral rug pattern, not a leaf piece at all."
 ```
 
-The harness has paid for itself. It rejected a stricter prompt rule that sounded right but suppressed a real defect, rejected an image-based few-shot example that taught the model to excuse the defects it should catch, showed Haiku 4.5 to be clearly weaker here than Sonnet, and disproved a "blurry photos beat sharp ones" theory that two runs had seemed to support.
+The harness has more than paid for itself. It killed a stricter prompt rule that sounded sensible but suppressed a real defect, killed an image-based few-shot example that taught the model to excuse the very defects it was meant to catch, showed Haiku 4.5 to be clearly weaker here than Sonnet, and disproved a "blurry photos actually do better" theory that two lucky runs had made look real.
+
+## Learning from real mistakes
+
+You can't fine-tune Claude. There's no endpoint for it, so the model is fixed and the only things you can change are the prompt, the pipeline, and the evidence you're changing them against. That evidence is the eval suite, which makes a genuine failure the single most valuable thing this app can collect.
+
+Normal runs store nothing. Photos go to a temp directory and get deleted in a `finally` block. The one exception is the **report a wrong answer** button, which sends that submission — both photos and the analysis the user saw — to `FEEDBACK_BUCKET`. It's opt-in, it spells out what it's sending, and it's hidden entirely when there's no bucket configured, so the offer is never made falsely.
+
+Only failures, never everything. Successes are the overwhelming majority and they're worth nothing here, and hoovering them up would mean holding a lot more photos of people's homes for no benefit. Retention is an S3 lifecycle rule, 90 days by default, so it's enforced rather than merely intended.
+
+The instance can `PutObject` and nothing else. No read, no list. If the app is ever compromised, the attacker can add objects but can't pull back what other people reported. To turn one into a case, fetch it with your own credentials:
+
+```bash
+aws s3 sync s3://<bucket>/<id>/ /tmp/<id>/ --region eu-west-2
+node eval/promote-feedback.js /tmp/<id> a-short-case-name
+```
+
+That drops the photos into `eval/cases/<name>/` with a placeholder `expected.json`. You fill in `defects[]` with where the problem actually is. The script deliberately doesn't copy the reported issues in, because those are what the app got wrong, and writing them in as the expected answer would bake the bug in permanently.
+
+## Set lookup
+
+Type a set number and it fetches that set's official product photo from Rebrickable to use as the reference, so there's nothing to upload. It shows you the name, year, piece count and a thumbnail to confirm before using it.
+
+It fetches the finished set, so it's the wrong reference if you're mid-build: everything you haven't got to yet reads as missing. Uploading an instruction page is still the way to check a single step.
+
+Two things fell out of building this. Rebrickable serves PNG bytes from `.jpg` URLs labelled `Content-Type: image/jpeg`, and different sets genuinely differ, so the type is sniffed from magic bytes instead. The Anthropic API rejects an image whose declared media type doesn't match its content, so trusting the header would have produced intermittent failures that looked like a model problem. And it makes render-against-photo the default comparison, which is the harder one, for the reasons in the section above.
+
+## Instruction pages and brick codes
+
+Uploading an instruction page instead of a photo is optional and does two things.
+
+The page gets read first for the set number, step number and printed parts callout, and that goes into the comparison prompt. The callout is the useful part: it says which pieces belong at *this* step, so something from a later step stops being reported as missing.
+
+With `REBRICKABLE_API_KEY` set and a set number in hand, the set's real inventory is fetched and each missing or wrong piece is matched against it. The tool schema's `enum` is built from that inventory, so a part number that isn't in your set can't be returned at all.
+
+It gives you a ranked shortlist rather than one answer, and that distinction matters more than I expected. Forced to name a single part, it was wrong on 4 out of 4 attempts at a missing drum foot, picking a thin dark-blue plate for a tall pale-blue brick. Asked for up to three candidates, it included the right part 3 times out of 4 and ranked it first every time. Committing is the hard bit; ranking isn't. So the UI shows thumbnails and you pick, which takes about a second. Passing the build photo into that step made it worse, so it stays text-only.
+
+Element IDs are shown where available, since that's what LEGO's replacement-parts service wants, and design IDs otherwise. The same part number can appear in several colours in one set, and each is a different element ID, so those are offered as separate candidates.
+
+What it won't do is guess a set number from a photo of the model. On my own images that returned "unknown" three times out of three for one photo, and two *different* wrong numbers for another, both at medium confidence. One of the wrong numbers was a real set, so checking that the number resolves wouldn't have caught it either. A printed number gets read; an unprinted one gets left alone.
 
 ## Photo tips
 
-Bright even lighting, straight-on rather than at a steep angle, and keep uploads under about 10 MB. Photos are re-encoded and downscaled in the browser before upload.
+Bright even light, straight on rather than at a steep angle, under about 10 MB. Photos are re-encoded and downscaled in the browser before upload anyway.
 
 ## Privacy
 
-Photos are sent to the server only when you click Analyze, and forwarded to Anthropic's API. This app doesn't store them.
+Photos are only sent to the server when you press Analyze, and they're forwarded to Anthropic's API to do the comparison. They're written to a temp directory during processing and deleted immediately afterwards.
+
+The exception is the report button. If you use it, that submission's photos are stored so the mistake can be turned into a test case, and they're deleted after 90 days. Nothing else is kept, and nothing is stored unless you choose to report something.
 
 ## Licence
 
-No licence is specified, so all rights are reserved by default: readable, but not licensed for reuse. (`package.json` sets `"private": true`, which only prevents npm publication and says nothing about the repository.)
+No licence is specified, so all rights are reserved by default: readable, but not licensed for reuse. (`package.json` sets `"private": true`, which only stops npm publication and says nothing about the repository.)
 
-The `eval/cases/mosaic-*` fixtures are generated by `eval/make-mosaic-fixtures.py` and carry no third-party rights. The photographed cases are of the author's own builds.
+The `eval/cases/mosaic-*` fixtures are generated by `eval/make-mosaic-fixtures.py` and carry no third-party rights. The photographed cases are all of my own builds.
